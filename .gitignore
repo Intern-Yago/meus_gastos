@@ -1,0 +1,28 @@
+# Pitch de Vendas
+venda.txt
+
+# Secrets and Environment
+.env
+.env.*
+backend/.env
+frontend/.env
+
+# Databases
+*.db
+*.sqlite3
+backend/finora.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+backend/venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker logs
+*.log

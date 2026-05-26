@@ -1,0 +1,36 @@
+ Extrato Conta Corrente 
+Conta ;71786147
+Período ;21/04/2026 a 21/05/2026
+Saldo ;2,97
+
+Data Lançamento;Histórico;Descrição;Valor;Saldo
+15/05/2026;Crédito Evento B3;* Prov * Rendimento 8                  Mxrf11;0,80;2,97
+14/05/2026;Compra no débito;Padaria Buenas         Sao Paulo     Bra;-6,50;2,17
+13/05/2026;Compra no débito;P Condessa Brasileira  Sao Paulo     Bra;-13,20;8,67
+10/05/2026;Débito recarga transporte;;-5,30;21,87
+09/05/2026;Compra no débito;Panificadora V Uniao   Sao Paulo     Bra;-13,50;27,17
+08/05/2026;Compra no débito;Ifd*bar Cantinho Dos A Sao Paulo     Bra;-20,98;40,67
+08/05/2026;Pix enviado ;Pedro Lucas Guimaraes Amorim;-50,00;61,65
+07/05/2026;Pix enviado ;Local Park;-18,00;111,65
+07/05/2026;Pix enviado ;Rede Aqui;-224,92;129,65
+06/05/2026;Pix recebido;Eaata Brasil;3.952,51;354,57
+06/05/2026;Pagamento efetuado;Pagamento Fatura - YAGO VICTOR GUIMARAES MESSIAS AMORIM;-2.240,98;-3.597,94
+06/05/2026;Pagamento efetuado;CARVALHO ADMINISTRACAO DE BENS LTDA;-1.200,00;-1.356,96
+06/05/2026;Pix enviado ;Viaclip;-99,90;-156,96
+06/05/2026;Pix enviado ;Receita Federal;-86,05;-57,06
+02/05/2026;Débito recarga transporte;;-10,60;28,99
+30/04/2026;Pix enviado ;99 Food;-28,33;39,59
+29/04/2026;Compra no débito;Emporio Da Balsa       Sao Paulo     Bra;-9,48;67,92
+29/04/2026;Compra no débito;Emporio Da Balsa       Sao Paulo     Bra;-5,98;77,40
+29/04/2026;Pix enviado ;45116763 Paula Melo Rubio Da Cruz;-1,00;83,38
+27/04/2026;Compra no débito;Ifd*bar Cantinho Dos A Sao Paulo     Bra;-20,98;84,38
+27/04/2026;Compra no débito;Mp *varanda            Sao Paulo     Bra;-2,50;105,36
+27/04/2026;Compra no débito;L N Da Silveira Alimen Sao Paulo     Bra;-36,00;107,86
+26/04/2026;Pix enviado ;Pagar Me Pagamentos;-24,00;143,86
+26/04/2026;Pix enviado ;Enel Distribuicao Sao Paulo;-57,22;167,86
+26/04/2026;Pix enviado ;Sabesp;-81,23;225,08
+26/04/2026;Pix enviado ;Sabesp;-89,36;306,31
+24/04/2026;Compra no débito;Big Center             Brasilia      Bra;-15,87;395,67
+24/04/2026;Compra no débito;Distribuidora Nevada   Brasilia      Bra;-11,75;411,54
+22/04/2026;Pix enviado ;Oreni Ramiro Pimenta;-15,00;423,29
+22/04/2026;Compra no débito;Starbulls Hamburgueria Brasilia      Bra;-65,40;438,29
