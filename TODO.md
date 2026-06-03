@@ -10,6 +10,8 @@
 - [x] **Branding Unificado**: Emails profissionais e relatórios PDF com logo e identidade visual.
 - [x] **Responsividade Total**: Fim do 'Hover' obrigatório; ações sempre visíveis no mobile.
 - [x] **Travas de Integridade**: Bloqueio de lançamentos em Silos e Projetos desativados/concluídos.
+- [x] **Reconciliação com OCR**: Processamento de imagens de notas/comprovantes via Zap/Chat e conciliação sugerida inteligente.
+- [x] **Docker Healthchecks**: Sincronização robusta e monitoramento de saúde entre Postgres, Redis, MinIO e Uvicorn no startup.
 
 ## 🚀 Em Execução (Fase 6: Experiência & Segurança Proativa)
 - [ ] **Customização de Splash Screen**: Implementar carregamento de elite com fundo personalizado e logo animada para Android/iOS.
@@ -22,11 +24,9 @@
 - [ ] **Motor de Categorização Global (Auto-Learn)**: Implementar inteligência estatística de categorização com pgvector, Sanitizador LGPD e Score de Confiança (ver detalhes completos da arquitetura em `auto_learn.md`).
 - [ ] **Integração API Oficial Meta**: Migração para infraestrutura oficial do WhatsApp Cloud API.
 - [ ] **Alocação de Ativos Inteligente**: IA sugerindo rebalanceamento de carteira baseado em objetivos.
-- [ ] **Reconciliação com OCR**: IA lendo fotos de notas fiscais físicas enviadas pelo Zap.
 - [ ] **Open Banking Webhooks**: Integração direta com bancos para extratos em tempo real.
 
 ### 🛠️ Engenharia e DX
-- [ ] **Docker Healthchecks**: Sincronização robusta entre serviços no startup.
 - [ ] **Painel de Controle Evolution**: Interface para gerenciar instâncias de WhatsApp diretamente no Silo.
 - [ ] **Documentação OpenAPI (Redoc)**: Refinamento completo da doc para futuras integrações de terceiros.
 
