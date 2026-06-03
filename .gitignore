@@ -1,28 +1,44 @@
-# Pitch de Vendas
-venda.txt
+# Finora - Git Ignore Strategy
 
 # Secrets and Environment
 .env
 .env.*
 backend/.env
 frontend/.env
+CLOUDFLARE_TUNNEL_TOKEN
 
-# Databases
+# Dependencies
+node_modules/
+backend/venv/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Build Artifacts
+frontend/.next/
+frontend/out/
+backend/app/static/logo_fiora.png
+
+# Databases and Local Storage
 *.db
 *.sqlite3
 backend/finora.db
+backend/uploads/*
+!backend/uploads/.gitkeep
+evolution_data/
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-venv/
-.venv/
-backend/venv/
-
-# OS
+# OS and Editors
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
 
-# Docker logs
+# Docker and Logs
 *.log
+docker-compose.override.yml
+
+# Local testing and temp files
+comprovante.jpeg
+check_tx.py
+backend/check_tx.py
+verify_tools.py
