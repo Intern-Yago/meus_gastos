@@ -87,6 +87,15 @@ interface DashboardSummary {
     spent: number;
     percentage: number;
   }[];
+  dinheiro_livre_real: number;
+  das_provisao: number;
+  goals_reserva: number;
+  entradas_previstas_mes: number;
+  contas_previstas_mes: number;
+  despesas_pagas_mes: number;
+  sobra_provavel: number;
+  risco_caixa: string;
+  texto_analise_caixa: string;
 }
 
 export default function DashboardPage() {
@@ -294,13 +303,23 @@ export default function DashboardPage() {
 
                     <div className="space-y-3">
                         <div className="flex justify-between items-center border-b border-gray-50 pb-2">
-                            <span className="text-[9px] font-black text-gray-400 uppercase">Entradas Previstas</span>
+                            <span className="text-[9px] font-black text-gray-400 uppercase">1. Entradas Previstas</span>
                             <span className="text-xs font-black text-green-500">{formatCurrency(summary.entradas_previstas_mes)}</span>
                         </div>
                         <div className="flex justify-between items-center border-b border-gray-50 pb-2">
-                            <span className="text-[9px] font-black text-gray-400 uppercase">Contas Previstas (+ Impostos)</span>
-                            <span className="text-xs font-black text-red-500">{formatCurrency(summary.contas_previstas_mes + summary.das_provisao)}</span>
+                            <span className="text-[9px] font-black text-gray-400 uppercase">2. Gastos Já Realizados (Pagos)</span>
+                            <span className="text-xs font-black text-red-500">{formatCurrency(summary.despesas_pagas_mes)}</span>
                         </div>
+                        <div className="flex justify-between items-center border-b border-gray-50 pb-2">
+                            <span className="text-[9px] font-black text-gray-400 uppercase">3. Contas a Pagar (Pendentes)</span>
+                            <span className="text-xs font-black text-red-400">{formatCurrency(summary.contas_previstas_mes)}</span>
+                        </div>
+                        {summary.das_provisao > 0 && (
+                          <div className="flex justify-between items-center border-b border-gray-50 pb-2">
+                              <span className="text-[9px] font-black text-gray-400 uppercase">4. Provisão de Impostos (DAS)</span>
+                              <span className="text-xs font-black text-orange-500">{formatCurrency(summary.das_provisao)}</span>
+                          </div>
+                        )}
                         <div className="flex justify-between items-center border-b border-gray-50 pb-2">
                             <span className="text-[9px] font-black text-gray-400 uppercase">Sobra Estimada de Caixa</span>
                             <span className={`text-sm font-black ${summary.sobra_provavel >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(summary.sobra_provavel)}</span>
