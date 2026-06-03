@@ -238,60 +238,84 @@ export default function DashboardPage() {
           <>
             {/* HERO SECTION: Resumo Imediato */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+               {/* CARD ESQUERDA: SALDO DISPONÍVEL E DINHEIRO LIVRE REAL */}
                <div className="lg:col-span-2 bg-gray-900 rounded-[2.5rem] p-10 text-white relative overflow-hidden group shadow-2xl">
                   <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl group-hover:scale-110 transition-transform duration-1000"></div>
                   
                   <div className="relative z-10 flex flex-col justify-between h-full">
-                    <div>
-                       <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-4">Saldo Disponível em Conta</p>
-                       <h3 className="text-5xl md:text-6xl font-black tracking-tighter mb-8">{formatCurrency(summary.assets_total)}</h3>
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+                      <div>
+                         <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-3">Saldo Disponível em Conta</p>
+                         <h3 className="text-4xl md:text-5xl font-black tracking-tighter">{formatCurrency(summary.assets_total)}</h3>
+                      </div>
+                      <div className="bg-white/5 border border-white/10 backdrop-blur-md rounded-3xl p-5 md:min-w-[200px] text-left">
+                         <p className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.15em] mb-1">💸 Dinheiro Livre Real</p>
+                         <h4 className="text-2xl font-black text-white tracking-tight">{formatCurrency(summary.dinheiro_livre_real)}</h4>
+                         <p className="text-[8px] font-bold text-gray-400 uppercase tracking-wider mt-1">(Descontando impostos, cartões e metas)</p>
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-8 border-t border-white/5 pt-8">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-white/5 pt-8">
                         <div>
-                            <p className="text-[10px] font-black text-gray-500 uppercase mb-1">Resultado Mensal</p>
-                            <p className={`text-xl font-bold ${summary.balance >= 0 ? 'text-green-400' : 'text-red-400'}`}>{formatCurrency(summary.balance)}</p>
+                            <p className="text-[9px] font-black text-gray-500 uppercase mb-1">Resultado Mensal</p>
+                            <p className={`text-sm md:text-base font-black ${summary.balance >= 0 ? 'text-green-400' : 'text-red-400'}`}>{formatCurrency(summary.balance)}</p>
                         </div>
                         <div>
-                            <p className="text-[10px] font-black text-gray-500 uppercase mb-1">Entradas no Mês</p>
-                            <p className="text-xl font-bold text-green-400">{formatCurrency(summary.total_income)}</p>
+                            <p className="text-[9px] font-black text-gray-500 uppercase mb-1">Provisão de DAS</p>
+                            <p className="text-sm md:text-base font-black text-orange-400">{formatCurrency(summary.das_provisao)}</p>
                         </div>
-                        <div className="hidden md:block">
-                            <p className="text-[10px] font-black text-gray-500 uppercase mb-1">Saídas no Mês</p>
-                            <p className="text-xl font-bold text-red-400">{formatCurrency(summary.total_expense)}</p>
+                        <div>
+                            <p className="text-[9px] font-black text-gray-500 uppercase mb-1">Reserva de Metas</p>
+                            <p className="text-sm md:text-base font-black text-emerald-400">{formatCurrency(summary.goals_reserva)}</p>
+                        </div>
+                        <div>
+                            <p className="text-[9px] font-black text-gray-500 uppercase mb-1">Dívidas Pendentes</p>
+                            <p className="text-sm md:text-base font-black text-red-400">{formatCurrency(summary.liabilities_total)}</p>
                         </div>
                     </div>
                   </div>
                </div>
 
-               {/* CARD: PROJEÇÃO E SAÚDE */}
+               {/* CARD DIREITA: MEU MÊS FECHA? (ORÁCULO DE CAIXA) */}
                <div className="bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm flex flex-col justify-between">
-                  <div>
-                    <h3 className="text-lg font-black text-gray-900 tracking-tight mb-6">SAÚDE MENSAL</h3>
-                    <div className="space-y-6">
-                        <div className="space-y-2">
-                            <div className="flex justify-between text-[10px] font-black uppercase">
-                                <span className="text-gray-400">Comprometimento de Renda</span>
-                                <span className={summary.income_commitment_pct > 70 ? 'text-red-600' : 'text-blue-600'}>{Math.round(summary.income_commitment_pct)}%</span>
-                            </div>
-                            <div className="w-full bg-gray-50 h-2 rounded-full overflow-hidden">
-                                <div className={`h-full transition-all duration-1000 ${summary.income_commitment_pct > 70 ? 'bg-red-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(summary.income_commitment_pct, 100)}%` }}></div>
-                            </div>
+                  <div className="space-y-5">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-black text-gray-900 tracking-tight uppercase">🔮 Meu Mês Fecha?</h3>
+                      <span className={`px-2.5 py-1 text-[8px] font-black rounded-full uppercase tracking-widest ${
+                        summary.risco_caixa === 'alto' 
+                          ? 'bg-red-50 text-red-600' 
+                          : summary.risco_caixa === 'medio' 
+                            ? 'bg-orange-50 text-orange-600' 
+                            : 'bg-green-50 text-green-600'
+                      }`}>
+                        {summary.risco_caixa === 'alto' ? 'ALTO RISCO' : summary.risco_caixa === 'medio' ? 'RISCO MÉDIO' : 'BAIXO RISCO'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                        <div className="flex justify-between items-center border-b border-gray-50 pb-2">
+                            <span className="text-[9px] font-black text-gray-400 uppercase">Entradas Previstas</span>
+                            <span className="text-xs font-black text-green-500">{formatCurrency(summary.entradas_previstas_mes)}</span>
                         </div>
-                        <div className="space-y-2">
-                            <div className="flex justify-between text-[10px] font-black uppercase">
-                                <span className="text-gray-400">Saldo Projetado Final</span>
-                                <span className="text-gray-900 font-bold">{formatCurrency(summary.projected_balance)}</span>
-                            </div>
-                            <div className="w-full bg-gray-50 h-2 rounded-full overflow-hidden">
-                                <div className="h-full bg-green-500 transition-all duration-1000" style={{ width: '100%' }}></div>
-                            </div>
+                        <div className="flex justify-between items-center border-b border-gray-50 pb-2">
+                            <span className="text-[9px] font-black text-gray-400 uppercase">Contas Previstas (+ Impostos)</span>
+                            <span className="text-xs font-black text-red-500">{formatCurrency(summary.contas_previstas_mes + summary.das_provisao)}</span>
+                        </div>
+                        <div className="flex justify-between items-center border-b border-gray-50 pb-2">
+                            <span className="text-[9px] font-black text-gray-400 uppercase">Sobra Estimada de Caixa</span>
+                            <span className={`text-sm font-black ${summary.sobra_provavel >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(summary.sobra_provavel)}</span>
                         </div>
                     </div>
+
+                    <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100/50">
+                        <p className="text-[9px] font-black text-gray-400 uppercase mb-1">Análise do Oráculo Finora</p>
+                        <p className="text-[10px] text-gray-600 font-bold leading-relaxed italic">{summary.texto_analise_caixa}</p>
+                    </div>
                   </div>
-                  <Link href="/reports" className="mt-8 flex items-center justify-between p-4 bg-gray-50 rounded-2xl group hover:bg-blue-600 transition-all">
-                     <span className="text-xs font-black text-gray-900 group-hover:text-white transition-all uppercase tracking-widest">Análise Detalhada</span>
-                     <ChevronRight className="text-gray-400 group-hover:text-white transition-all" size={18} />
+                  
+                  <Link href="/fechamento" className="mt-6 flex items-center justify-between p-4 bg-blue-50/50 hover:bg-blue-600 border border-blue-50 rounded-2xl group transition-all">
+                     <span className="text-[10px] font-black text-blue-700 group-hover:text-white transition-all uppercase tracking-widest">Ritual de Fechamento</span>
+                     <ChevronRight className="text-blue-500 group-hover:text-white transition-all" size={16} />
                   </Link>
                </div>
             </div>

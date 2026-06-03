@@ -305,6 +305,17 @@ class DashboardSummary(BaseModel):
     accounts_payable: dict
     accounts_receivable: dict
     budgets: List[dict]
+    
+    # Novas métricas de Inteligência MEI / Autônomo
+    dinheiro_livre_real: float
+    das_provisao: float
+    goals_reserva: float
+    entradas_previstas_mes: float
+    contas_previstas_mes: float
+    despesas_pagas_mes: float
+    sobra_provavel: float
+    risco_caixa: str
+    texto_analise_caixa: str
 
 # Pagination schemas
 class PaginatedTransactions(DashboardSummary):
