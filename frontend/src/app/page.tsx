@@ -15,10 +15,17 @@ export default function LandingPage() {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+    
     if (token) {
       setIsLoggedIn(true);
+      // Se o usuário já está logado, vai direto pro Dashboard na web ou no PWA
+      router.push('/dashboard');
+    } else if (isStandalone) {
+      // Se está no PWA (standalone) mas deslogado, manda direto pro Login em vez de carregar a Landing Page!
+      router.push('/login');
     }
-  }, []);
+  }, [router]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 selection:bg-blue-600 selection:text-white overflow-x-hidden">
