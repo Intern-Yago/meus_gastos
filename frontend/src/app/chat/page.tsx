@@ -3,7 +3,13 @@
 import DashboardLayout from '@/components/DashboardLayout';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
-import { Send, Upload, Paperclip, X, FileText, Mic, Square, Volume2, VolumeX, Loader2, Bot, User } from 'lucide-react';
+import { 
+  Send, Upload, Paperclip, X, FileText, Mic, Square, Loader2, Bot, User, 
+  Volume2, VolumeX, ShieldAlert, Settings, Trash2, Download 
+} from 'lucide-react';
+import Link from 'next/link';
+import ReactMarkdown from 'react-markdown';
+import { usePWAInstall } from '@/hooks/usePWAInstall';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -11,102 +17,114 @@ interface Message {
 }
 
 export default function ChatPage() {
+  const { isInstallable, isPWA, installPWA } = usePWAInstall();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [attachedFile, setAttachedFile] = useState<{ name: string, path: string } | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordTime, setRecordTime] = useState(0);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [errorPopup, setErrorPopup] = useState<string | null>(null);
+  const [permissionNotice, setPermissionNotice] = useState<string | null>(null);
   
-  // Audio/Speech State
+  // Voice states
   const [isAutoSpeakEnabled, setIsAutoSpeakEnabled] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
 
-  // Audio Recording State
-  const [isRecording, setIsRecording] = useState(false);
-  const [audioLevel, setAudioLevel] = useState(0);
-  const [recordTime, setRecordTime] = useState(0);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const chatInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const animationRef = useRef<number | null>(null);
 
-  // Inicializar configurações do localStorage
+  // Load Preferences
   useEffect(() => {
-    const savedAutoSpeak = localStorage.getItem('finora_auto_speak') === 'true';
-    setIsAutoSpeakEnabled(savedAutoSpeak);
+    const savedAutoSpeak = localStorage.getItem('finora_auto_speak');
+    if (savedAutoSpeak !== null) setIsAutoSpeakEnabled(savedAutoSpeak === 'true');
   }, []);
 
-  // Persistir mudanças
+  const checkPermission = (type: 'functional' | 'intelligence') => {
+    const saved = localStorage.getItem('finora_cookie_consent_v2');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return parsed[type] === true;
+    }
+    return true; 
+  };
+
+  const handleToggleSpeak = () => {
+    if (!checkPermission('functional')) {
+      setPermissionNotice("Em respeito à sua escolha de privacidade, os recursos de voz estão desabilitados. Você pode alterar isso nas configurações.");
+      return;
+    }
+    const newValue = !isAutoSpeakEnabled;
+    setIsAutoSpeakEnabled(newValue);
+    localStorage.setItem('finora_auto_speak', String(newValue));
+    if (!newValue && isSpeaking) window.speechSynthesis.cancel();
+  };
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   useEffect(() => {
-    localStorage.setItem('finora_auto_speak', isAutoSpeakEnabled.toString());
-  }, [isAutoSpeakEnabled]);
-  
-  // Progress/Proactive State
-  const [lastProgressStatus, setLastProgressStatus] = useState<string>('idle');
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
-  
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+    scrollToBottom();
+  }, [messages, isLoading]);
 
   const speak = (text: string) => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
-    
+    if (!('speechSynthesis' in window) || !checkPermission('functional')) return;
+    window.speechSynthesis.cancel();
+
+    // Remove markdown symbols, emojis and format text for smooth speech synthesis
     const cleanText = text
-      .replace(/\[FILE_PATH: .*?\]/g, '') // Remove tags de arquivo
-      .replace(/\*\*/g, '')               // Remove negrito
-      .replace(/\*/g, '')                // Remove itálico ou asteriscos soltos
-      .replace(/#/g, '')                 // Remove títulos
-      .replace(/_/g, '')                 // Remove underscores
-      .replace(/^\s*-\s*/gm, '')         // Remove traços de listas no início das linhas
+      .replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g, '') // remove emojis
+      .replace(/\[FILE_PATH: .*?\]/g, '') // remove caminhos de anexo
+      .replace(/\*\*(.*?)\*\*/g, '$1')     // remove negritos
+      .replace(/\*(.*?)\*/g, '$1')         // remove itálicos
+      .replace(/__(.*?)__/g, '$1')         // remove sublinhados
+      .replace(/_(.*?)_/g, '$1')           // remove sublinhados
+      .replace(/`([^`]+)`/g, '$1')         // remove blocos de código
+      .replace(/#+\s+(.*?)\n/g, '$1. ')    // remove cabeçalhos de markdown e adiciona pausa
+      .replace(/-\s+/g, '')                // remove marcadores de lista
+      .replace(/\n+/g, ' ')                // junta quebras de linha para reduzir as pausas artificiais
       .trim();
 
-    window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(cleanText);
-    const voices = window.speechSynthesis.getVoices();
-    
-    // 1. Prioridade: Vozes femininas conhecidas por nome (Premium)
-    let femaleVoice = voices.find(voice => 
-      voice.lang.includes('pt-BR') && 
-      ['maria', 'heloisa', 'luciana', 'joana', 'francisca', 'female'].some(name => voice.name.toLowerCase().includes(name))
-    );
-
-    // 2. Segunda opção: Qualquer voz que o navegador identifique como feminina (via metadados se houver)
-    if (!femaleVoice) {
-      femaleVoice = voices.find(v => v.lang.includes('pt-BR') && v.name.toLowerCase().includes('female'));
-    }
-
-    // 3. Fallback final: Qualquer voz em Português (sem bloquear homens, apenas priorizando mulheres)
-    const finalVoice = femaleVoice || voices.find(v => v.lang.includes('pt-BR')) || voices[0];
-
-    if (finalVoice) utterance.voice = finalVoice;
     utterance.lang = 'pt-BR';
-    utterance.rate = 1.3; // Mais rápido e menos pausado
-    utterance.pitch = 1.0; 
+    utterance.rate = 1.45; // Acelera a fala para ficar dinâmica, natural e sem lentidão
     
+    const voices = window.speechSynthesis.getVoices();
+    const femaleVoice = voices.find(v => v.lang.includes('pt') && (v.name.toLowerCase().includes('female') || v.name.toLowerCase().includes('maria') || v.name.toLowerCase().includes('luciana')));
+    if (femaleVoice) utterance.voice = femaleVoice;
     utterance.onstart = () => setIsSpeaking(true);
     utterance.onend = () => setIsSpeaking(false);
     window.speechSynthesis.speak(utterance);
   };
 
-  const processChatMessage = useCallback(async (userMessage: string, attachmentPath?: string, isHidden: boolean = false) => {
+  const processChatMessage = useCallback(async (userMessage: string, attachmentPath?: string, isHidden: boolean = false, saveHistory: boolean = true) => {
     const messageWithTag = attachmentPath ? `${userMessage} [FILE_PATH: ${attachmentPath}]` : userMessage;
     if (!isHidden) setMessages(prev => [...prev, { role: 'user', content: messageWithTag }]);
     setIsLoading(true);
     try {
       const response = await api.post('/ai/chat', { 
         messages: isHidden ? [{ role: 'user', content: messageWithTag }] : [...messages, { role: 'user', content: messageWithTag }],
-        attachment_path: attachmentPath
+        attachment_path: attachmentPath,
+        save_history: saveHistory
       });
       const aiResponse = response.data.response;
       if (aiResponse) {
         setMessages(prev => [...prev, { role: 'assistant', content: aiResponse }]);
-        if (isAutoSpeakEnabled) speak(aiResponse.replace(/\[FILE_PATH: .*?\]/g, '').trim());
+        if (isAutoSpeakEnabled && checkPermission('functional')) speak(aiResponse.replace(/\[FILE_PATH: .*?\]/g, '').trim());
       }
     } catch (err) {
       if (!isHidden) setMessages(prev => [...prev, { role: 'assistant', content: 'Ocorreu um erro técnico.' }]);
     } finally {
       setIsLoading(false);
+      setTimeout(() => chatInputRef.current?.focus(), 100);
     }
   }, [messages, isAutoSpeakEnabled]);
 
@@ -114,11 +132,28 @@ export default function ChatPage() {
     const loadHistory = async () => {
       try {
         const res = await api.get('/ai/history');
+        const urlParams = new URLSearchParams(window.location.search);
+        const initPrompt = urlParams.get('init_prompt');
+        
+        if (initPrompt) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
         if (res.data && res.data.length > 0) {
           setMessages(res.data);
+          if (initPrompt) {
+            setTimeout(() => {
+              processChatMessage(initPrompt);
+            }, 150);
+          }
         } else {
-          // Trigger proactive greeting if no history
-          await processChatMessage("Olá! Comece a conversa me dando as boas vindas e veja se tenho contas pendentes hoje.", undefined, true);
+          if (initPrompt) {
+            setTimeout(() => {
+              processChatMessage(initPrompt);
+            }, 150);
+          } else {
+            await processChatMessage("[SYSTEM_INIT]", undefined, true, false);
+          }
         }
       } catch (err) {
         console.error('Erro ao carregar histórico:', err);
@@ -127,21 +162,39 @@ export default function ChatPage() {
     loadHistory();
   }, []);
 
-  // Proactive Polling Logic
-  useEffect(() => {
-    const checkProgress = async () => {
-      try {
-        const res = await api.get('/files/import-progress');
-        const status = res.data.status;
-        if (lastProgressStatus === 'processing' && status === 'completed') {
-          await processChatMessage("A importação terminou. Analise o que foi importado e me dê um resumo proativo.", undefined, true);
-        }
-        setLastProgressStatus(status);
-      } catch (err) {}
-    };
-    pollingRef.current = setInterval(checkProgress, 3000);
-    return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
-  }, [lastProgressStatus, processChatMessage]);
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if ((!input.trim() && !attachedFile) || isLoading) return;
+    
+    let filePath = undefined;
+    if (attachedFile) {
+        setIsUploading(true);
+        const formData = new FormData();
+        formData.append('file', attachedFile);
+        try {
+            const res = await api.post('/files/upload-receipt', formData);
+            filePath = res.data.file_path;
+        } catch (e) { alert('Erro no upload do arquivo'); }
+        finally { setIsUploading(false); }
+    }
+
+    const currentInput = input;
+    setInput('');
+    setAttachedFile(null);
+    await processChatMessage(currentInput, filePath);
+  };
+
+  const handleSuggestClick = async (promptText: string) => {
+    if (isLoading) return;
+    setInput('');
+    setAttachedFile(null);
+    await processChatMessage(promptText);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) setAttachedFile(file);
+  };
 
   const startRecording = async () => {
     try {
@@ -201,50 +254,73 @@ export default function ChatPage() {
     }
   };
 
-  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  useEffect(scrollToBottom, [messages]);
-
-  const renderMessageContent = (content: string, role: string) => {
-    const cleanContent = content.replace(/\[FILE_PATH: .*?\]/g, '').trim();
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const parts = cleanContent.split(urlRegex);
-    return (
-      <div className="text-sm md:text-base leading-relaxed">
-        {parts.map((part, index) => part.match(urlRegex) ? (
-          <a key={index} href={part} target="_blank" rel="noopener noreferrer" className="underline font-bold break-all text-blue-500 hover:text-blue-700">{part}</a>
-        ) : part)}
-      </div>
-    );
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setIsUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-    try {
-      const res = await api.post('/files/upload-receipt', formData);
-      setAttachedFile({ name: file.name, path: res.data.file_path });
-      const msg = `Arquivo "${file.name}" pronto. Como posso ajudar?`;
-      setMessages(prev => [...prev, { role: 'assistant', content: msg }]);
-      if (isAutoSpeakEnabled) speak(msg);
-    } catch (err: any) {
-      setErrorPopup(err.response?.data?.detail || 'Erro no upload');
-    } finally {
-      setIsUploading(false);
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.onstop = () => {
+        setIsRecording(false);
+        if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      };
+      mediaRecorderRef.current.stop();
+      if (timerRef.current) clearInterval(timerRef.current);
+      setIsRecording(false);
     }
   };
 
-  const handleSend = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if ((!input.trim() && !attachedFile) || isLoading) return;
-    let userMessage = input.trim() || `Analise este arquivo: ${attachedFile?.name}`;
-    if (attachedFile && input.trim()) userMessage += ` (Anexo: ${attachedFile.name})`;
-    const path = attachedFile?.path;
-    setInput('');
-    setAttachedFile(null);
-    await processChatMessage(userMessage, path);
+  const renderMessageContent = (content: string, role: string) => {
+    const hasFile = content.includes('[FILE_PATH:');
+    const cleanContent = content.replace(/\[FILE_PATH: .*?\]/g, '').trim();
+    
+    return (
+      <div className="space-y-2 prose prose-sm max-w-none prose-p:leading-relaxed prose-p:font-medium prose-a:text-blue-600 prose-a:font-black prose-a:no-underline hover:prose-a:underline">
+        {hasFile && (
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[10px] font-black uppercase tracking-widest ${role === 'user' ? 'bg-blue-700 border-blue-500 text-blue-100' : 'bg-gray-200 border-gray-300 text-gray-500'}`}>
+            <FileText size={14} /> Arquivo Anexo
+          </div>
+        )}
+        {cleanContent ? (
+          role === 'assistant' ? (
+              <ReactMarkdown 
+                components={{
+                    a: ({node, ...props}) => {
+                        const isExport = props.href?.includes('/reports/');
+                        
+                        const handleDownloadClick = async (e: React.MouseEvent) => {
+                            if (isExport) {
+                                e.preventDefault();
+                                try {
+                                    // SECURITY: Trocar JWT Local por um Cookie HttpOnly de 24h
+                                    await api.post('/auth/set-download-cookie');
+                                    // Abrir o link agora que o cookie está plantado
+                                    window.open(props.href, '_blank');
+                                } catch (err) {
+                                    console.error('Erro ao preparar download:', err);
+                                    window.location.href = props.href || '#';
+                                }
+                            }
+                        };
+
+                        return (
+                            <a 
+                                {...props} 
+                                onClick={handleDownloadClick}
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className={isExport ? "inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-md mt-2 mb-2 cursor-pointer" : ""}
+                            />
+                        );
+                    }
+                }}
+              >
+                {cleanContent}
+              </ReactMarkdown>
+          ) : (
+            <p className="text-sm leading-relaxed font-medium">{cleanContent}</p>
+          )
+        ) : hasFile ? (
+          <p className="text-xs italic opacity-70">Processando arquivo...</p>
+        ) : null}
+      </div>
+    );
   };
 
   return (
@@ -256,14 +332,28 @@ export default function ChatPage() {
               <Bot size={24} />
             </div>
             <div>
-              <h1 className="text-lg font-black text-gray-900 tracking-tight">Assistente Finora</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-black text-gray-900 tracking-tight">Assistente Finora</h1>
+                {isInstallable && !isPWA && (
+                    <button 
+                      onClick={installPWA}
+                      title="Instalar Finora"
+                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-all animate-pulse"
+                    >
+                        <Download size={16} />
+                    </button>
+                )}
+              </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-green-600">Proativo & Online</span>
               </div>
             </div>
           </div>
-          <button onClick={() => { setIsAutoSpeakEnabled(!isAutoSpeakEnabled); if (isSpeaking) window.speechSynthesis.cancel(); }} className={`p-2.5 rounded-2xl transition-all ${isAutoSpeakEnabled ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'bg-white text-gray-400 border border-gray-200'}`}>
+          <button 
+            onClick={handleToggleSpeak} 
+            className={`p-2.5 rounded-2xl transition-all ${isAutoSpeakEnabled ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'bg-white text-gray-400 border border-gray-200'}`}
+          >
             {isAutoSpeakEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
           </button>
         </div>
@@ -286,6 +376,35 @@ export default function ChatPage() {
               </div>
             </div>
           ))}
+
+          {messages.length <= 1 && (
+            <div className="flex flex-col items-center justify-center text-center p-6 bg-gradient-to-b from-blue-50/40 to-transparent rounded-[2rem] border border-blue-50/50 max-w-lg mx-auto my-6 animate-in fade-in zoom-in-95 duration-500">
+              <span className="text-2xl mb-2">⚡</span>
+              <h3 className="text-xs font-black text-gray-900 uppercase tracking-widest mb-1">Perguntas Frequentes</h3>
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-4">Escolha um atalho para iniciar</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 w-full">
+                {[
+                  { label: "Onde mais gastei este mês?", query: "Onde mais gastei este mês?" },
+                  { label: "O que posso cortar para economizar?", query: "O que posso cortar para economizar?" },
+                  { label: "Meu caixa fechará positivo?", query: "Meu caixa vai fechar positivo este mês?" },
+                  { label: "Posso comprar item de R$ 4.000?", query: "Posso comprar um notebook de R$ 4.000 à vista ou parcelado? Analise meu caixa." },
+                  { label: "Quais contas vencem essa semana?", query: "Quais contas vencem essa semana?" },
+                  { label: "Qual meu patrimônio líquido?", query: "Qual é o meu patrimônio líquido atual?" }
+                ].map((item, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleSuggestClick(item.query)}
+                    className="p-3 bg-white border border-gray-100 hover:border-blue-200 rounded-2xl text-left text-xs font-semibold text-gray-600 hover:text-blue-600 hover:shadow-md hover:shadow-blue-50 transition-all active:scale-[0.98]"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {isLoading && (
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-gray-100 rounded-xl flex items-center justify-center text-gray-400">
@@ -305,11 +424,38 @@ export default function ChatPage() {
               <button onClick={() => setAttachedFile(null)} className="ml-1 text-blue-300 hover:text-blue-600"><X size={16} /></button>
             </div>
           )}
+
+          {messages.length > 1 && (
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide -mx-1 px-1">
+              {[
+                { label: "📊 Onde mais gastei?", query: "Onde mais gastei este mês?" },
+                { label: "💡 O que cortar?", query: "O que posso cortar para economizar?" },
+                { label: "📉 Caixa positivo?", query: "Meu caixa vai fechar positivo este mês?" },
+                { label: "💻 Simular Compra", query: "Posso comprar um notebook de R$ 4.000 à vista ou parcelado? Analise meu caixa." },
+                { label: "📅 Vencimentos", query: "Quais contas vencem essa semana?" },
+                { label: "🏦 Patrimônio", query: "Qual é o meu patrimônio líquido atual?" }
+              ].map((item, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleSuggestClick(item.query)}
+                  disabled={isLoading}
+                  className="flex-shrink-0 px-2.5 py-1 bg-gray-50 hover:bg-blue-50 border border-gray-100 hover:border-blue-100 text-[9px] font-black uppercase tracking-wider text-gray-400 hover:text-blue-600 rounded-full transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           <form onSubmit={handleSend} className="flex items-center gap-2">
             <div className="flex-1 relative flex items-center">
               {isRecording ? (
                 <div className="w-full h-[52px] bg-red-50 border-2 border-red-100 rounded-2xl px-4 flex items-center justify-between text-red-600 animate-pulse overflow-hidden">
                   <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <button type="button" onClick={cancelRecording} className="p-2 hover:bg-red-100 rounded-xl transition-all">
+                        <Trash2 size={18} />
+                    </button>
                     <div className="flex gap-1 items-center justify-center h-8 w-16 flex-shrink-0 bg-red-100/30 rounded-xl">
                         {[...Array(6)].map((_, i) => (
                             <div 
@@ -320,12 +466,20 @@ export default function ChatPage() {
                         ))}
                     </div>
                     <span className="text-sm font-black font-mono flex-shrink-0">{recordTime}s</span>
-                    <span className="text-[10px] font-black uppercase tracking-widest truncate opacity-70">Gravando Áudio...</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest truncate opacity-70">Gravando...</span>
                   </div>
                 </div>
               ) : (
                 <div className="flex-1 relative">
-                  <input type="text" className="w-full bg-gray-50 border-none rounded-2xl pl-5 pr-12 py-3.5 text-sm md:text-base text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-inner" placeholder={isUploading ? "Subindo..." : "Escreva aqui..."} value={input} onChange={(e) => setInput(e.target.value)} disabled={isUploading || isLoading} />
+                  <input 
+                    type="text" 
+                    ref={chatInputRef}
+                    className="w-full bg-gray-50 border-none rounded-2xl pl-5 pr-12 py-3.5 text-sm md:text-base text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-inner" 
+                    placeholder={isUploading ? "Subindo..." : "Escreva aqui..."} 
+                    value={input} 
+                    onChange={(e) => setInput(e.target.value)} 
+                    disabled={isUploading || isLoading} 
+                  />
                   <button type="button" onClick={() => fileInputRef.current?.click()} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-gray-300 hover:text-blue-600 transition-colors"><Paperclip size={20} /></button>
                   <input type="file" className="hidden" ref={fileInputRef} onChange={handleFileUpload} accept="image/*,application/pdf,.xlsx,.xls,.csv" />
                 </div>
@@ -337,6 +491,23 @@ export default function ChatPage() {
           </form>
         </div>
       </div>
+
+      {permissionNotice && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-sm w-full p-8 text-center space-y-6 animate-in zoom-in-95">
+            <div className="w-20 h-20 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto"><ShieldAlert size={48} /></div>
+            <h2 className="text-2xl font-black text-gray-900 tracking-tight">Privacidade Ativa</h2>
+            <p className="text-gray-500 font-medium leading-relaxed">{permissionNotice}</p>
+            <div className="flex flex-col gap-3">
+                <Link href="/settings" className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
+                   <Settings size={18} /> ABRIR CONFIGURAÇÕES
+                </Link>
+                <button onClick={() => setPermissionNotice(null)} className="w-full py-4 bg-gray-100 text-gray-600 font-black rounded-2xl hover:bg-gray-200 transition-all active:scale-95">FECHAR</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {errorPopup && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-sm w-full p-8 text-center space-y-6 animate-in zoom-in-95">

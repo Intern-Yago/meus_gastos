@@ -1,22 +1,41 @@
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, field_validator, ConfigDict
 from typing import Optional, List
 from datetime import datetime
+from uuid import UUID
 
 # User schemas
 class UserBase(BaseModel):
     email: EmailStr
     name: str
+    phone: Optional[str] = None
     currency: Optional[str] = "BRL"
     monthly_income_goal: Optional[float] = None
+    push_notifications_enabled: Optional[bool] = True
+    spending_alerts_enabled: Optional[bool] = True
+    market_insights_enabled: Optional[bool] = True
+    email_verified: bool = False
+    phone_verified: bool = False
+    investor_profile: Optional[str] = "Não Definido"
 
 class UserCreate(UserBase):
     password: str
 
-class User(UserBase):
-    id: int
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    password: Optional[str] = None
+    currency: Optional[str] = None
+    push_notifications_enabled: Optional[bool] = None
+    spending_alerts_enabled: Optional[bool] = None
+    market_insights_enabled: Optional[bool] = None
+    email_verified: Optional[bool] = None
+    phone_verified: Optional[bool] = None
+    investor_profile: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+class User(UserBase):
+    id: UUID
+    model_config = ConfigDict(from_attributes=True)
 
 # Token schemas
 class Token(BaseModel):
@@ -32,6 +51,7 @@ class AccountBase(BaseModel):
     is_default: Optional[bool] = False
     color: Optional[str] = "#3b82f6"
     initial_balance: Optional[float] = 0.0
+    currency: Optional[str] = "BRL"
     has_credit_card: Optional[bool] = False
     credit_limit: Optional[float] = None
     closing_day: Optional[int] = None
@@ -45,6 +65,7 @@ class AccountUpdate(BaseModel):
     is_default: Optional[bool] = None
     color: Optional[str] = None
     initial_balance: Optional[float] = None
+    currency: Optional[str] = None
     has_credit_card: Optional[bool] = None
     credit_limit: Optional[float] = None
     closing_day: Optional[int] = None
@@ -52,28 +73,155 @@ class AccountUpdate(BaseModel):
 
 class Account(AccountBase):
     id: int
-    user_id: int
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
+    user_id: UUID
+    model_config = ConfigDict(from_attributes=True)
 
 # Category schemas
 class CategoryBase(BaseModel):
     name: str
     type: str # income or expense
-    color: Optional[str] = None
+    color: Optional[str] = "#3b82f6"
     icon: Optional[str] = "Tag"
+    is_active: Optional[bool] = True
 
 class CategoryCreate(CategoryBase):
     pass
 
 class Category(CategoryBase):
     id: int
-    user_id: int
+    user_id: UUID
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        from_attributes = True
+# Project schemas
+class ProjectItemBase(BaseModel):
+    name: str
+    budget_allocation: float = 0.0
+    type: str = "expense" # income or expense
+
+class ProjectItemCreate(ProjectItemBase):
+    pass
+
+class ProjectItem(ProjectItemBase):
+    id: int
+    project_id: int
+    model_config = ConfigDict(from_attributes=True)
+
+class ProjectBase(BaseModel):
+    name: str
+    total_budget: float
+    target_date: Optional[datetime] = None
+    color: Optional[str] = "#3b82f6"
+    icon: Optional[str] = "Target"
+    status: Optional[str] = "planning"
+    type: Optional[str] = "event"
+    is_business: Optional[bool] = False
+    cnpj: Optional[str] = None
+    logo_path: Optional[str] = None
+
+class ProjectCreate(ProjectBase):
+    items: Optional[List[ProjectItemCreate]] = None
+
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = None
+    total_budget: Optional[float] = None
+    target_date: Optional[datetime] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
+    status: Optional[str] = None
+    type: Optional[str] = None
+    is_business: Optional[bool] = None
+    cnpj: Optional[str] = None
+    logo_path: Optional[str] = None
+
+class Project(ProjectBase):
+    id: int
+    user_id: UUID
+    items: List[ProjectItem] = []
+    model_config = ConfigDict(from_attributes=True)
+
+class ProjectItemSummary(BaseModel):
+    id: int
+    name: str
+    type: str
+    allocated: float
+    spent: float
+    remaining: float
+
+class ProjectSummary(BaseModel):
+    id: int
+    name: str
+    type: str
+    total_budget: float
+    total_income: float
+    total_expense: float
+    remaining_budget: float
+    percentage_spent: float
+    items: List[ProjectItemSummary]
+    transactions: List[dict]
+    revenue: float
+    costs: float
+    profit: float
+    profit_margin: float
+    model_config = ConfigDict(from_attributes=True)
+
+# Transaction schemas
+class TransactionBase(BaseModel):
+    amount: float
+    description: str
+    date: datetime
+    category_id: Optional[int] = None
+    account_id: Optional[int] = None
+    project_id: Optional[int] = None
+    project_item_id: Optional[int] = None
+    goal_id: Optional[int] = None
+    type: str = "expense"
+    payment_method: str = "OTHERS"
+    is_fixed_expense: bool = False
+    is_recurrent: bool = False
+    installments: int = 1
+    is_paid: bool = True
+    amount_paid: float = 0.0
+    due_day: Optional[int] = None
+    notify_me: bool = False
+    ticker: Optional[str] = None
+    shares: Optional[float] = 0
+    attachment_path: Optional[str] = None
+    original_currency: Optional[str] = "BRL"
+    exchange_rate: Optional[float] = 1.0
+
+class TransactionCreate(TransactionBase):
+    pass
+
+class TransactionUpdate(BaseModel):
+    amount: Optional[float] = None
+    description: Optional[str] = None
+    date: Optional[datetime] = None
+    category_id: Optional[int] = None
+    account_id: Optional[int] = None
+    project_id: Optional[int] = None
+    project_item_id: Optional[int] = None
+    goal_id: Optional[int] = None
+    type: Optional[str] = None
+    payment_method: Optional[str] = None
+    is_fixed_expense: Optional[bool] = None
+    is_recurrent: Optional[bool] = None
+    installments: Optional[int] = None
+    is_paid: Optional[bool] = None
+    amount_paid: Optional[float] = None
+    due_day: Optional[int] = None
+    notify_me: Optional[bool] = None
+    ticker: Optional[str] = None
+    shares: Optional[float] = None
+    attachment_path: Optional[str] = None
+    original_currency: Optional[str] = None
+    exchange_rate: Optional[float] = None
+
+class Transaction(TransactionBase):
+    id: int
+    user_id: UUID
+    category: Optional[Category] = None
+    account: Optional[Account] = None
+    model_config = ConfigDict(from_attributes=True)
 
 # Goal schemas
 class GoalBase(BaseModel):
@@ -97,11 +245,8 @@ class GoalUpdate(BaseModel):
 
 class Goal(GoalBase):
     id: int
-    user_id: int
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
+    user_id: UUID
+    model_config = ConfigDict(from_attributes=True)
 
 # Budget schemas
 class BudgetBase(BaseModel):
@@ -111,104 +256,44 @@ class BudgetBase(BaseModel):
 class BudgetCreate(BudgetBase):
     pass
 
-class BudgetUpdate(BaseModel):
-    amount: Optional[float] = None
-
 class Budget(BudgetBase):
     id: int
-    user_id: int
+    user_id: UUID
     category: Optional[Category] = None
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Notification schemas
 class NotificationBase(BaseModel):
     title: str
     content: str
     type: str
-    is_read: Optional[bool] = False
+    user_id: UUID
 
 class NotificationCreate(NotificationBase):
-    user_id: int
+    pass
 
 class Notification(NotificationBase):
     id: int
-    user_id: int
+    is_read: bool
     created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-# Transaction schemas
-class TransactionBase(BaseModel):
-    amount: float
-    date: datetime
-    description: str
-    category_id: int
-    account_id: Optional[int] = None
-    is_fixed_expense: Optional[bool] = False
-    is_recurrent: Optional[bool] = False
-    payment_method: Optional[str] = "OTHERS"
-    installments: Optional[int] = 1
-    attachment_path: Optional[str] = None
-    due_day: Optional[int] = None
-    notify_me: Optional[bool] = False
-    is_paid: Optional[bool] = True
-    amount_paid: Optional[float] = 0.0
-    ticker: Optional[str] = None
-    shares: Optional[float] = 0
-
-    @field_validator('payment_method')
-    @classmethod
-    def payment_method_to_upper(cls, v: str) -> str:
-        if v: return v.upper()
-        return "OTHERS"
-
-class TransactionCreate(TransactionBase):
-    pass
-
-class Transaction(TransactionBase):
-    id: int
-    user_id: int
-    category: Optional[Category] = None
-    account: Optional[Account] = None
-
-    class Config:
-        from_attributes = True
-
-# AI Chat schemas
-class MessageEntry(BaseModel):
-    role: str
-    content: str
-
-class ChatMessage(BaseModel):
-    messages: List[MessageEntry]
-    attachment_path: Optional[str] = None
-
-class ChatResponse(BaseModel):
-    response: str
+    model_config = ConfigDict(from_attributes=True)
 
 # Dashboard schemas
-class ChartData(BaseModel):
-    name: str
-    value: float
-
 class DashboardSummary(BaseModel):
     total_income: float
     total_expense: float
     balance: float
     net_worth: float
-    projected_balance: float # Saldo previsto ao fim do mês
-    active_subscriptions: List[Transaction] # Lista de gastos recorrentes
+    projected_balance: float
+    active_subscriptions: List[Transaction]
     assets_total: float
     liabilities_total: float
     prev_income: float
     prev_expense: float
     income_change: float
     expense_change: float
-    expenses_by_category: List[ChartData]
-    expenses_by_payment_method: List[ChartData]
+    expenses_by_category: List[dict]
+    expenses_by_payment_method: List[dict]
     fixed_expenses: float
     variable_expenses: float
     recurring_expenses: float
@@ -217,7 +302,17 @@ class DashboardSummary(BaseModel):
     debit_expenses: float
     income_commitment_pct: float
     pending_bills: List[Transaction]
-    budgets: List[dict] # Resumo do progresso de orçamentos
+    accounts_payable: dict
+    accounts_receivable: dict
+    budgets: List[dict]
+
+# Pagination schemas
+class PaginatedTransactions(DashboardSummary):
+    items: List[Transaction]
+    total: int
+    page: int
+    pages: int
+    size: int
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
@@ -225,3 +320,15 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
+
+class ChatMessageSingle(BaseModel):
+    role: str # user or assistant
+    content: str
+
+class ChatMessage(BaseModel):
+    messages: List[ChatMessageSingle]
+    attachment_path: Optional[str] = None
+    save_history: Optional[bool] = True
+
+class ChatResponse(BaseModel):
+    response: str

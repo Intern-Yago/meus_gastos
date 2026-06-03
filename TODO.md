@@ -1,27 +1,34 @@
-# Finora - Project Roadmap & TODO
+# Finora - Plano de Evolução (Roadmap)
 
-## ✅ Concluído Recentemente
-- [x] **Gestão Híbrida de Contas**: Suporte para Cartões de Crédito e Contas Correntes unificadas.
-- [x] **Patrimônio Líquido (Net Worth)**: Cálculo em tempo real de ativos e passivos.
-- [x] **Orçamentos Opcionais**: Sistema de limites mensais com termômetros visuais.
-- [x] **Gestão de Metas**: Hub visual com ícones, cores e progresso.
-- [x] **IA Coach Proativo**: Avisos automáticos de fechamento de faturas e controle de orçamentos.
-- [x] **Detector de Assinaturas**: Widget dedicado para gastos recorrentes.
-- [x] **Limpeza Visual de Extratos**: IA normaliza nomes de transações de arquivos de banco.
+## ✅ Concluído (Fase 1 - 5)
+- [x] **Segurança de Elite**: Migração UUID, blindagem de `/uploads` e Cookies de Download de 24h.
+- [x] **Integração WhatsApp**: Evolution API v1.8 estável integrada ao 'Self-Silo' da IA.
+- [x] **Transformação PWA**: Manifesto, Service Workers e botão de instalação nativa no mobile.
+- [x] **Real-Time Push**: Notificações instantâneas via SSE e Redis Pub/Sub.
+- [x] **Paginação Profissional**: Navegação fluida de 30 registros por página no backend e frontend.
+- [x] **Markdown no Chat**: Renderização rica de mensagens e botões de exportação automáticos.
+- [x] **Branding Unificado**: Emails profissionais e relatórios PDF com logo e identidade visual.
+- [x] **Responsividade Total**: Fim do 'Hover' obrigatório; ações sempre visíveis no mobile.
+- [x] **Travas de Integridade**: Bloqueio de lançamentos em Silos e Projetos desativados/concluídos.
 
-## 🚀 Próxima Prioridade: Modo Arquiteto Financeiro (Project Scaffolding)
-- [ ] Implementar entrevista consultiva na IA para grandes eventos (Casamento, Reformas, Viagens).
-- [ ] Atualizar `create_category_tool` para receber ícones dinamicamente.
-- [ ] Instruir a IA a realizar criações em lote (Batch Creation) de Metas + Categorias + Orçamentos simultaneamente baseada na conversa.
+## 🚀 Em Execução (Fase 6: Experiência & Segurança Proativa)
+- [ ] **Customização de Splash Screen**: Implementar carregamento de elite com fundo personalizado e logo animada para Android/iOS.
+- [ ] **Haptic Feedback**: Pequenas vibrações táteis no mobile para ações de sucesso/erro.
+- [ ] **Social Login (Google)**: Login simplificado via OAuth2 integrado ao perfil.
+- [ ] **Autenticação de Dois Fatores (MFA)**: Suporte a TOTP (Google Authenticator).
 
-## 🎨 Design e UI
-- [ ] Implementar Dark Mode (Tema Escuro) completo com detecção de sistema.
-- [ ] Projeção de Fluxo de Caixa (Gráfico preditivo de longo prazo no Dashboard).
+## 📅 Próximos Passos (Backlog Estratégico)
+### 💼 Finanças & IA Avançada
+- [ ] **Motor de Categorização Global (Auto-Learn)**: Implementar inteligência estatística de categorização com pgvector, Sanitizador LGPD e Score de Confiança (ver detalhes completos da arquitetura em `auto_learn.md`).
+- [ ] **Integração API Oficial Meta**: Migração para infraestrutura oficial do WhatsApp Cloud API.
+- [ ] **Alocação de Ativos Inteligente**: IA sugerindo rebalanceamento de carteira baseado em objetivos.
+- [ ] **Reconciliação com OCR**: IA lendo fotos de notas fiscais físicas enviadas pelo Zap.
+- [ ] **Open Banking Webhooks**: Integração direta com bancos para extratos em tempo real.
 
-## 📈 Melhorias Futuras
-- [ ] **Multi-Moedas**: Contas e transações em diferentes moedas com conversão em tempo real.
-- [ ] **Exportação de Dados**: PDF/XLSX de relatórios e extratos filtrados.
+### 🛠️ Engenharia e DX
+- [ ] **Docker Healthchecks**: Sincronização robusta entre serviços no startup.
+- [ ] **Painel de Controle Evolution**: Interface para gerenciar instâncias de WhatsApp diretamente no Silo.
+- [ ] **Documentação OpenAPI (Redoc)**: Refinamento completo da doc para futuras integrações de terceiros.
 
-## 🛠 Manutenção Técnica
-- [ ] Refatorar componentes UI (Modais, Seletores) para reduzir código repetido.
-- [ ] Implementar migrações de banco de dados robustas com Alembic.
+---
+*Finora Roadmap: Rumo ao Silo Definitivo.* 🚀
