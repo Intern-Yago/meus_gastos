@@ -1,19 +1,24 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Image from 'next/image';
 
 export default function SplashScreen() {
   const [isVisible, setIsVisible] = useState(true);
   const [isFadingOut, setIsVisibleFadingOut] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [hasInteracted, setHasInteracted] = useState(false);
+  
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   // Função para sintetizar um som de "Chime de Elite" via Web Audio API (Nativo, offline e levíssimo)
   const playEliteChime = () => {
     try {
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioContext) return;
+      
       const ctx = new AudioContext();
+      audioContextRef.current = ctx;
       const now = ctx.currentTime;
 
       // 1. SUB-BASS (Estabilidade e Segurança - Nota Lá2 / 110Hz)
@@ -55,48 +60,67 @@ export default function SplashScreen() {
       oscSub.start(now);
       oscSub.stop(now + 1.5);
     } catch (err) {
-      // Ignora silenciosamente se o navegador bloquear o autoplay
       console.log('Autoplay do Chime bloqueado pelo navegador.');
     }
   };
 
-  useEffect(() => {
-    // Toca o Chime sintetizado logo no mount
+  const handleInteraction = () => {
+    if (hasInteracted) return;
+    setHasInteracted(true);
+    
+    // Toca o som de inicialização
     playEliteChime();
+    
+    // Completa a barra de carregamento instantaneamente
+    setProgress(100);
+    
+    // Dispara o fade-out imediato
+    setTimeout(() => {
+      setIsVisibleFadingOut(true);
+    }, 150);
+    
+    // Remove do DOM após o fade
+    setTimeout(() => {
+      setIsVisible(false);
+    }, 650);
+  };
 
-    // Simula carregamento progressivo da barra
+  useEffect(() => {
+    // Simula carregamento progressivo da barra em background
     const progressInterval = setInterval(() => {
       setProgress(prev => {
-        if (prev >= 100) {
+        if (prev >= 90) {
+          // Segura em 90% esperando a interação tátil para o Chime tocar
           clearInterval(progressInterval);
-          return 100;
+          return 90;
         }
-        return prev + 4;
+        return prev + 5;
       });
-    }, 30);
+    }, 40);
 
-    // Inicia o fade-out após 1.2s
-    const fadeTimeout = setTimeout(() => {
-      setIsVisibleFadingOut(true);
-    }, 1200);
-
-    // Remove completamente do DOM após o fade-out (1.7s no total)
-    const removeTimeout = setTimeout(() => {
-      setIsVisible(false);
-    }, 1700);
+    // Fail-safe: Se o usuário não tocar na tela após 3.5s, o splash fecha sozinho silenciosamente
+    const failSafeTimeout = setTimeout(() => {
+      if (!hasInteracted) {
+        setIsVisibleFadingOut(true);
+        setTimeout(() => {
+          setIsVisible(false);
+        }, 500);
+      }
+    }, 3500);
 
     return () => {
       clearInterval(progressInterval);
-      clearTimeout(fadeTimeout);
-      clearTimeout(removeTimeout);
+      clearTimeout(failSafeTimeout);
     };
-  }, []);
+  }, [hasInteracted]);
 
   if (!isVisible) return null;
 
   return (
     <div 
-      className={`fixed inset-0 z-[9999] bg-gradient-to-tr from-slate-950 via-slate-900 to-slate-950 flex flex-col items-center justify-center transition-opacity duration-500 ease-in-out ${
+      onClick={handleInteraction}
+      onTouchStart={handleInteraction}
+      className={`fixed inset-0 z-[9999] bg-gradient-to-tr from-slate-950 via-slate-900 to-slate-950 flex flex-col items-center justify-center transition-opacity duration-500 ease-in-out cursor-pointer select-none ${
         isFadingOut ? 'opacity-0 pointer-events-none' : 'opacity-100'
       }`}
     >
@@ -108,13 +132,13 @@ export default function SplashScreen() {
             alt="Finora Logo" 
             width={48} 
             height={48} 
-            className="rounded-lg invert brightness-200"
+            className="rounded-lg invert brightness-200 animate-in zoom-in duration-500"
             priority
           />
         </div>
 
         {/* NOME E SLOGAN PREMIUM */}
-        <div className="text-center space-y-1.5 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+        <div className="text-center space-y-1.5">
           <h1 className="text-3xl font-black text-white tracking-tight leading-none">Finora</h1>
           <p className="text-[9px] font-black text-blue-400 uppercase tracking-[0.25em]">Silo de Inteligência</p>
         </div>
@@ -126,6 +150,13 @@ export default function SplashScreen() {
             style={{ width: `${progress}%` }}
           />
         </div>
+
+        {/* INDICAÇÃO TÁTIL PREMIUM */}
+        {!hasInteracted && (
+          <p className="text-[8px] font-black text-blue-500/60 uppercase tracking-[0.2em] animate-pulse pt-4">
+            Toque na tela para entrar
+          </p>
+        )}
       </div>
     </div>
   );
