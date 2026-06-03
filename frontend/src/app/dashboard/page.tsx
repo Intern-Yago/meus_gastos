@@ -2,9 +2,30 @@
 
 import DashboardLayout from '@/components/DashboardLayout';
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { TrendingUp, TrendingDown, Wallet, Target, CreditCard, Repeat, ShieldCheck, Loader2, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import { 
+  TrendingUp, 
+  TrendingDown, 
+  Wallet, 
+  Target, 
+  CreditCard, 
+  Repeat, 
+  ShieldCheck, 
+  Loader2, 
+  AlertCircle, 
+  CheckCircle2, 
+  Clock, 
+  Download, 
+  ShieldAlert, 
+  Settings as SettingsIcon, 
+  ArrowUpCircle, 
+  ArrowDownCircle,
+  Sparkles,
+  ChevronRight,
+  Filter
+} from 'lucide-react';
 import Link from 'next/link';
 
 interface Account {
@@ -15,6 +36,7 @@ interface Account {
 }
 
 interface ChartData {
+  id?: number;
   name: string;
   value: number;
 }
@@ -22,15 +44,16 @@ interface ChartData {
 interface Transaction {
   id: number;
   amount: number;
-  amount_paid: number;
   description: string;
-  category_id: number;
   date: string;
-  payment_method: string;
-  is_fixed_expense: boolean;
-  is_recurrent: boolean;
-  due_day?: number;
   is_paid: boolean;
+}
+
+interface PendingSummary {
+    late: any[];
+    on_time: any[];
+    total_late: number;
+    total_on_time: number;
 }
 
 interface DashboardSummary {
@@ -56,6 +79,8 @@ interface DashboardSummary {
   debit_expenses: number;
   income_commitment_pct: number;
   pending_bills: Transaction[];
+  accounts_payable: PendingSummary;
+  accounts_receivable: PendingSummary;
   budgets: {
     category: string;
     limit: number;
@@ -64,8 +89,8 @@ interface DashboardSummary {
   }[];
 }
 
-
 export default function DashboardPage() {
+  const router = useRouter();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [report, setReport] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
@@ -103,7 +128,6 @@ export default function DashboardPage() {
       const res = await api.get(`/dashboard/report?month=${month}&year=${year}${accParam}`);
       setReport(res.data.report);
     } catch (err) {
-      console.error('Erro ao buscar relatório IA:', err);
       setReport('Não foi possível gerar o relatório no momento.');
     } finally {
       setIsReportLoading(false);
@@ -115,16 +139,14 @@ export default function DashboardPage() {
     fetchAccounts();
   }, [fetchData]);
 
-  const handleTogglePaid = async (tx: Transaction) => {
+  const handleTogglePaid = async (txId: number) => {
     try {
-      await api.put(`/transactions/${tx.id}`, { ...tx, is_paid: !tx.is_paid });
+      await api.put(`/transactions/${txId}`, { is_paid: true });
       fetchData();
     } catch (err) {
-      console.error('Erro ao atualizar status de pagamento:', err);
+      console.error('Erro ao atualizar status:', err);
     }
   };
-
-  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -139,299 +161,370 @@ export default function DashboardPage() {
 
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
 
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
+
+  // DEEP LINKS HANDLERS
+  const handleCategoryClick = (data: any) => {
+    if (data && data.id) {
+      router.push(`/transactions?category_id=${data.id}&month=${month}&year=${year}`);
+    }
+  };
+
+  const handlePaymentMethodClick = (data: any) => {
+    if (data && data.name) {
+      router.push(`/transactions?payment_method=${data.name}&month=${month}&year=${year}`);
+    }
+  };
+
   return (
     <DashboardLayout>
-      <div className="space-y-8 pb-12">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <h1 className="text-3xl font-black text-gray-900 tracking-tight">Dashboard Mensal</h1>
-          
-          <div className="flex flex-wrap items-center gap-2 bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100">
-            <div className="flex items-center gap-1.5 px-3 py-1.5">
+      <div className="space-y-8 pb-20">
+        
+        {/* TOP TOOLBAR: Filtros e Exportação */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-4 rounded-[2rem] border border-gray-100 shadow-sm">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-2xl border border-gray-100">
               <CreditCard size={16} className="text-gray-400" />
               <select 
                 value={accountId} 
                 onChange={(e) => setAccountId(e.target.value)}
-                className="bg-transparent border-none rounded-xl text-sm font-black text-gray-900 focus:ring-0 cursor-pointer p-0"
+                className="bg-transparent border-none text-xs font-black text-gray-900 focus:ring-0 cursor-pointer p-0 pr-6"
               >
                 <option value="">Todas as Contas</option>
                 {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
               </select>
             </div>
-            <div className="w-px h-4 bg-gray-200" />
-            <select 
-              value={month} 
-              onChange={(e) => setMonth(parseInt(e.target.value))}
-              className="bg-transparent border-none rounded-xl px-3 py-1.5 text-sm font-black text-gray-900 focus:ring-0 cursor-pointer"
-            >
-              {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-            </select>
-            <div className="w-px h-4 bg-gray-200" />
-            <select 
-              value={year} 
-              onChange={(e) => setYear(parseInt(e.target.value))}
-              className="bg-transparent border-none rounded-xl px-3 py-1.5 text-sm font-black text-gray-900 focus:ring-0 cursor-pointer"
-            >
-              {years.map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
+            
+            <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-2xl border border-gray-100">
+              <Filter size={16} className="text-gray-400" />
+              <select 
+                value={month} 
+                onChange={(e) => setMonth(parseInt(e.target.value))}
+                className="bg-transparent border-none text-xs font-black text-gray-900 focus:ring-0 cursor-pointer p-0 pr-6"
+              >
+                {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </select>
+              <div className="w-px h-3 bg-gray-300 mx-1" />
+              <select 
+                value={year} 
+                onChange={(e) => setYear(parseInt(e.target.value))}
+                className="bg-transparent border-none text-xs font-black text-gray-900 focus:ring-0 cursor-pointer p-0 pr-2"
+              >
+                {years.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+             <button className="flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-50 transition-all active:scale-95 shadow-sm">
+                <Download size={14} /> Exportar
+             </button>
+             <button 
+                onClick={fetchReport}
+                disabled={isReportLoading}
+                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all active:scale-95 shadow-lg shadow-blue-100 disabled:opacity-50"
+             >
+                {isReportLoading ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />} Insights IA
+             </button>
           </div>
         </div>
 
         {isLoading ? (
           <div className="flex flex-col items-center justify-center h-96 space-y-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
-            <p className="text-gray-400 font-medium italic">Sincronizando suas finanças...</p>
+            <Loader2 className="animate-spin text-blue-600" size={48} />
+            <p className="text-gray-400 font-bold uppercase tracking-widest text-[10px]">Sincronizando seu Silo de Inteligência...</p>
           </div>
         ) : summary ? (
           <>
-            {/* Contas a Pagar - Destaque */}
-            {summary.pending_bills.length > 0 && (
-              <div className="bg-orange-50 border border-orange-100 rounded-[2rem] p-6 animate-in slide-in-from-top-4 duration-500">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-orange-500 p-2 rounded-xl text-white">
-                      <AlertCircle size={24} />
-                    </div>
-                    <div>
-                      <h2 className="text-lg font-black text-orange-900 uppercase tracking-tight">Contas a Pagar</h2>
-                      <p className="text-xs text-orange-700 font-medium">Você tem {summary.pending_bills.length} pendências para este mês</p>
-                    </div>
-                  </div>
-                  <Link href="/transactions" className="text-xs font-black text-orange-600 hover:underline uppercase tracking-widest">Ver Todas</Link>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {summary.pending_bills.slice(0, 3).map((bill) => (
-                    <div key={bill.id} className="bg-white p-4 rounded-2xl shadow-sm border border-orange-100 flex flex-col group">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center text-orange-600 group-hover:bg-orange-500 group-hover:text-white transition-all">
-                            <Clock size={20} />
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-gray-900">{bill.description}</p>
-                            <p className="text-[10px] text-gray-400 font-black uppercase">
-                              Vence em {new Intl.DateTimeFormat('pt-BR', { 
-                                day: '2-digit', 
-                                month: '2-digit'
-                              }).format(new Date(bill.date))}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-black text-gray-900">{formatCurrency(bill.amount)}</p>
-                          {bill.amount_paid > 0 && (
-                            <p className="text-[10px] text-green-600 font-bold">Faltam {formatCurrency(bill.amount - bill.amount_paid)}</p>
-                          )}
-                        </div>
-                      </div>
-                      
-                      {bill.amount_paid > 0 && (
-                        <div className="w-full bg-gray-100 h-1 rounded-full mb-3 overflow-hidden">
-                          <div 
-                            className="bg-orange-500 h-full transition-all" 
-                            style={{ width: `${Math.min((bill.amount_paid / bill.amount) * 100, 100)}%` }}
-                          />
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-end gap-2">
-                        <button 
-                          onClick={() => handleTogglePaid(bill)}
-                          className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 text-orange-600 hover:bg-orange-500 hover:text-white rounded-lg text-xs font-black transition-all"
-                        >
-                          <CheckCircle2 size={16} />
-                          QUITAR
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Patrimônio Líquido - NOVO WIDGET SUPERIOR */}
+            {/* HERO SECTION: Resumo Imediato */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm flex flex-col justify-between group overflow-hidden relative">
-                <div className="absolute top-0 right-0 -mr-12 -mt-12 w-64 h-64 bg-blue-50 rounded-full opacity-50 group-hover:scale-110 transition-transform duration-1000"></div>
-                
-                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                  <div>
-                    <h3 className="text-gray-400 text-xs font-black uppercase tracking-widest mb-1">Patrimônio Líquido Real</h3>
-                    <p className={`text-5xl font-black tracking-tighter ${summary.net_worth >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
-                      {formatCurrency(summary.net_worth)}
-                    </p>
-                    <div className="flex items-center gap-4 mt-6">
-                      <div>
-                        <p className="text-[10px] font-black text-gray-400 uppercase">Ativos Totais</p>
-                        <p className="text-sm font-bold text-green-600">{formatCurrency(summary.assets_total)}</p>
-                      </div>
-                      <div className="w-px h-8 bg-gray-100"></div>
-                      <div>
-                        <p className="text-[10px] font-black text-gray-400 uppercase">Passivos / Dívidas</p>
-                        <p className="text-sm font-bold text-red-500">{formatCurrency(summary.liabilities_total)}</p>
-                      </div>
-                    </div>
-                  </div>
+               <div className="lg:col-span-2 bg-gray-900 rounded-[2.5rem] p-10 text-white relative overflow-hidden group shadow-2xl">
+                  <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl group-hover:scale-110 transition-transform duration-1000"></div>
                   
-                  <div className="flex-1 max-w-xs space-y-4">
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[10px] font-black uppercase">
-                        <span className="text-gray-400">Saldo Projetado (Fim do Mês)</span>
-                        <span className={summary.projected_balance >= 0 ? 'text-green-600' : 'text-red-600'}>
-                          {formatCurrency(summary.projected_balance)}
-                        </span>
-                      </div>
-                      <div className="w-full bg-gray-50 h-2 rounded-full overflow-hidden">
-                        <div 
-                          className={`h-full transition-all duration-1000 ${summary.projected_balance >= 0 ? 'bg-green-500' : 'bg-red-500'}`} 
-                          style={{ width: `${Math.max(0, Math.min(100, (summary.projected_balance / (summary.total_income || 1)) * 100))}%` }}></div>
-                      </div>
-                    </div>
-                    <p className="text-[10px] text-gray-400 font-medium leading-relaxed italic">
-                      "Projeção baseada em todas as suas contas fixas e faturas pendentes até o dia 30."
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Orçamentos - MINI TERMÔMETROS */}
-              <div className="bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">Orçamentos</h3>
-                  <Link href="/categories" className="p-2 bg-gray-50 rounded-xl text-gray-400 hover:text-blue-600 transition-all"><Target size={20} /></Link>
-                </div>
-                
-                <div className="space-y-5">
-                  {summary.budgets.length > 0 ? summary.budgets.slice(0, 4).map((b, i) => (
-                    <div key={i} className="space-y-1.5">
-                      <div className="flex justify-between items-end">
-                        <span className="text-xs font-bold text-gray-700">{b.category}</span>
-                        <span className={`text-[10px] font-black ${b.percentage > 90 ? 'text-red-600' : 'text-gray-400'}`}>
-                          {formatCurrency(b.spent)} / {formatCurrency(b.limit)}
-                        </span>
-                      </div>
-                      <div className="w-full bg-gray-50 h-1.5 rounded-full overflow-hidden">
-                        <div 
-                          className={`h-full transition-all duration-1000 ${b.percentage > 90 ? 'bg-red-500' : b.percentage > 70 ? 'bg-orange-400' : 'bg-green-500'}`}
-                          style={{ width: `${Math.min(b.percentage, 100)}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  )) : (
-                    <div className="py-8 text-center border-2 border-dashed border-gray-50 rounded-3xl">
-                      <p className="text-[10px] font-black text-gray-300 uppercase leading-relaxed">Nenhum limite definido.<br/>Crie nas Categorias!</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Assinaturas e Drenos (NOVO) */}
-            {summary.active_subscriptions.length > 0 && (
-              <div className="bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm">
-                <div className="flex items-center justify-between mb-8">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-indigo-500 p-2 rounded-xl text-white">
-                      <Repeat size={24} />
-                    </div>
+                  <div className="relative z-10 flex flex-col justify-between h-full">
                     <div>
-                      <h2 className="text-lg font-black text-gray-900 uppercase tracking-tight">Assinaturas Ativas</h2>
-                      <p className="text-xs text-gray-400 font-medium">Detector de drenos mensais</p>
+                       <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-4">Saldo Disponível em Conta</p>
+                       <h3 className="text-5xl md:text-6xl font-black tracking-tighter mb-8">{formatCurrency(summary.assets_total)}</h3>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-black text-indigo-600">{formatCurrency(summary.active_subscriptions.reduce((acc, s) => acc + s.amount, 0))}</p>
-                    <p className="text-[9px] font-bold text-gray-300 uppercase">Total Mensal</p>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {summary.active_subscriptions.map((sub) => (
-                    <div key={sub.id} className="bg-gray-50/50 p-4 rounded-2xl flex items-center justify-between hover:bg-indigo-50 transition-colors group">
-                      <div className="flex items-center gap-3">
-                        <div className="bg-white p-2 rounded-xl shadow-sm text-indigo-500 group-hover:bg-indigo-500 group-hover:text-white transition-all">
-                          <ShieldCheck size={18} />
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-8 border-t border-white/5 pt-8">
+                        <div>
+                            <p className="text-[10px] font-black text-gray-500 uppercase mb-1">Resultado Mensal</p>
+                            <p className={`text-xl font-bold ${summary.balance >= 0 ? 'text-green-400' : 'text-red-400'}`}>{formatCurrency(summary.balance)}</p>
                         </div>
                         <div>
-                          <p className="text-sm font-bold text-gray-800">{sub.description}</p>
-                          <p className="text-[9px] font-black text-gray-400 uppercase">Recorrente</p>
+                            <p className="text-[10px] font-black text-gray-500 uppercase mb-1">Entradas no Mês</p>
+                            <p className="text-xl font-bold text-green-400">{formatCurrency(summary.total_income)}</p>
                         </div>
-                      </div>
-                      <p className="text-sm font-black text-gray-900">{formatCurrency(sub.amount)}</p>
+                        <div className="hidden md:block">
+                            <p className="text-[10px] font-black text-gray-500 uppercase mb-1">Saídas no Mês</p>
+                            <p className="text-xl font-bold text-red-400">{formatCurrency(summary.total_expense)}</p>
+                        </div>
                     </div>
-                  ))}
+                  </div>
+               </div>
+
+               {/* CARD: PROJEÇÃO E SAÚDE */}
+               <div className="bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-lg font-black text-gray-900 tracking-tight mb-6">SAÚDE MENSAL</h3>
+                    <div className="space-y-6">
+                        <div className="space-y-2">
+                            <div className="flex justify-between text-[10px] font-black uppercase">
+                                <span className="text-gray-400">Comprometimento de Renda</span>
+                                <span className={summary.income_commitment_pct > 70 ? 'text-red-600' : 'text-blue-600'}>{Math.round(summary.income_commitment_pct)}%</span>
+                            </div>
+                            <div className="w-full bg-gray-50 h-2 rounded-full overflow-hidden">
+                                <div className={`h-full transition-all duration-1000 ${summary.income_commitment_pct > 70 ? 'bg-red-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(summary.income_commitment_pct, 100)}%` }}></div>
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <div className="flex justify-between text-[10px] font-black uppercase">
+                                <span className="text-gray-400">Saldo Projetado Final</span>
+                                <span className="text-gray-900 font-bold">{formatCurrency(summary.projected_balance)}</span>
+                            </div>
+                            <div className="w-full bg-gray-50 h-2 rounded-full overflow-hidden">
+                                <div className="h-full bg-green-500 transition-all duration-1000" style={{ width: '100%' }}></div>
+                            </div>
+                        </div>
+                    </div>
+                  </div>
+                  <Link href="/reports" className="mt-8 flex items-center justify-between p-4 bg-gray-50 rounded-2xl group hover:bg-blue-600 transition-all">
+                     <span className="text-xs font-black text-gray-900 group-hover:text-white transition-all uppercase tracking-widest">Análise Detalhada</span>
+                     <ChevronRight className="text-gray-400 group-hover:text-white transition-all" size={18} />
+                  </Link>
+               </div>
+            </div>
+
+            {/* RELATÓRIO IA (Apenas se gerado) */}
+            {report && (
+                <div className="bg-gradient-to-br from-blue-600 to-indigo-800 rounded-[2.5rem] p-8 text-white shadow-xl shadow-blue-100 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="flex items-center gap-3 mb-6">
+                        <Sparkles size={24} className="text-blue-200" />
+                        <h3 className="text-xl font-black tracking-tight">Insights do Assistente Finora</h3>
+                    </div>
+                    <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/10 text-blue-50 font-medium leading-relaxed">
+                        {report.split('\n').map((line, i) => <p key={i} className="mb-3 last:mb-0">{line}</p>)}
+                    </div>
                 </div>
-              </div>
             )}
 
-            {/* Contas a Pagar - Destaque */}
+            {/* SEÇÃO: FLUXO DE CAIXA (A PAGAR VS A RECEBER) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* A Pagar */}
+                <div className="bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm">
+                    <div className="flex items-center justify-between mb-8">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-red-500 p-2 rounded-xl text-white shadow-lg shadow-red-50">
+                                <ArrowDownCircle size={20} />
+                            </div>
+                            <h2 className="text-xl font-black text-gray-900 tracking-tight uppercase">A Pagar</h2>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-[10px] font-black text-gray-400 uppercase">Total Pendente</p>
+                            <p className="text-lg font-black text-red-600">{formatCurrency(summary.accounts_payable.total_late + summary.accounts_payable.total_on_time)}</p>
+                        </div>
+                    </div>
 
-            {/* Relatório IA */}
-            <div className="bg-white rounded-[2rem] p-1 shadow-xl shadow-blue-100 border border-blue-50">
-              <div className="bg-gradient-to-br from-blue-600 to-indigo-800 rounded-[1.8rem] p-6 md:p-10 text-white relative overflow-hidden">
-                <div className="relative z-10">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
-                    <div className="space-y-1">
-                      <h3 className="text-2xl md:text-3xl font-black tracking-tight flex items-center gap-3">✨ Relatório Inteligente</h3>
-                      <p className="text-blue-100 text-sm font-medium">Análise proativa baseada no seu padrão de consumo</p>
+                    <div className="flex items-center gap-8 mb-8">
+                        <div className="h-32 w-32 shrink-0 cursor-pointer" onClick={() => router.push('/bills')}>
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie 
+                                        data={[
+                                            { name: 'Atrasado', value: summary.accounts_payable.total_late },
+                                            { name: 'No Prazo', value: summary.accounts_payable.total_on_time }
+                                        ]} 
+                                        innerRadius={35} outerRadius={45} dataKey="value"
+                                    >
+                                        <Cell fill="#ef4444" stroke="none" />
+                                        <Cell fill="#3b82f6" stroke="none" />
+                                    </Pie>
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                        <div className="flex-1 space-y-4">
+                            <div className="flex items-center justify-between border-b border-gray-50 pb-2">
+                                <span className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2">
+                                    <div className="w-2 h-2 bg-red-500 rounded-full" /> Atrasado
+                                </span>
+                                <span className="text-sm font-bold text-red-600">{formatCurrency(summary.accounts_payable.total_late)}</span>
+                            </div>
+                            <div className="flex items-center justify-between border-b border-gray-50 pb-2">
+                                <span className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2">
+                                    <div className="w-2 h-2 bg-blue-500 rounded-full" /> No Prazo
+                                </span>
+                                <span className="text-sm font-bold text-gray-900">{formatCurrency(summary.accounts_payable.total_on_time)}</span>
+                            </div>
+                        </div>
                     </div>
-                    <button 
-                      onClick={fetchReport}
-                      disabled={isReportLoading}
-                      className="bg-white text-blue-600 hover:bg-blue-50 transition-all px-6 py-3 rounded-2xl text-sm font-black shadow-lg active:scale-95 disabled:opacity-50"
-                    >
-                      {isReportLoading ? <Loader2 className="animate-spin" size={18} /> : 'Gerar Insights Agora'}
-                    </button>
-                  </div>
-                  {report && (
-                    <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/10 leading-relaxed text-blue-50 font-medium">
-                      {report.split('\n').map((line, i) => <p key={i} className="mb-3 last:mb-0">{line}</p>)}
+
+                    <div className="space-y-3">
+                        {[...summary.accounts_payable.late, ...summary.accounts_payable.on_time].slice(0, 3).map((tx) => (
+                            <div key={tx.id} className="flex items-center justify-between p-4 rounded-2xl bg-gray-50/50 hover:bg-gray-50 transition-all group">
+                                <div className="flex items-center gap-4">
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${summary.accounts_payable.late.some(l => l.id === tx.id) ? 'bg-red-50 text-red-500' : 'bg-blue-50 text-blue-500'}`}>
+                                        <Clock size={16} />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-gray-900">{tx.description}</p>
+                                        <p className="text-[10px] font-black text-gray-400 uppercase">{new Date(tx.date).toLocaleDateString('pt-BR')}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <p className="text-sm font-black text-gray-900">{formatCurrency(tx.amount)}</p>
+                                    <button onClick={() => handleTogglePaid(tx.id)} className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-all"><CheckCircle2 size={18} /></button>
+                                </div>
+                            </div>
+                        ))}
                     </div>
-                  )}
                 </div>
-              </div>
+
+                {/* A Receber */}
+                <div className="bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm">
+                    <div className="flex items-center justify-between mb-8">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-green-500 p-2 rounded-xl text-white shadow-lg shadow-green-50">
+                                <ArrowUpCircle size={20} />
+                            </div>
+                            <h2 className="text-xl font-black text-gray-900 tracking-tight uppercase">A Receber</h2>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-[10px] font-black text-gray-400 uppercase">Total Previsto</p>
+                            <p className="text-lg font-black text-green-600">{formatCurrency(summary.accounts_receivable.total_late + summary.accounts_receivable.total_on_time)}</p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-8 mb-8">
+                        <div className="h-32 w-32 shrink-0 cursor-pointer" onClick={() => router.push('/receivables')}>
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie 
+                                        data={[
+                                            { name: 'Em Atraso', value: summary.accounts_receivable.total_late },
+                                            { name: 'No Prazo', value: summary.accounts_receivable.total_on_time }
+                                        ]} 
+                                        innerRadius={35} outerRadius={45} dataKey="value"
+                                    >
+                                        <Cell fill="#f97316" stroke="none" />
+                                        <Cell fill="#10b981" stroke="none" />
+                                    </Pie>
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                        <div className="flex-1 space-y-4">
+                            <div className="flex items-center justify-between border-b border-gray-50 pb-2">
+                                <span className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2">
+                                    <div className="w-2 h-2 bg-orange-500 rounded-full" /> Em Atraso
+                                </span>
+                                <span className="text-sm font-bold text-orange-600">{formatCurrency(summary.accounts_receivable.total_late)}</span>
+                            </div>
+                            <div className="flex items-center justify-between border-b border-gray-50 pb-2">
+                                <span className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2">
+                                    <div className="w-2 h-2 bg-green-500 rounded-full" /> Agendado
+                                </span>
+                                <span className="text-sm font-bold text-gray-900">{formatCurrency(summary.accounts_receivable.total_on_time)}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3">
+                        {[...summary.accounts_receivable.late, ...summary.accounts_receivable.on_time].slice(0, 3).map((tx) => (
+                            <div key={tx.id} className="flex items-center justify-between p-4 rounded-2xl bg-gray-50/50 hover:bg-gray-50 transition-all group">
+                                <div className="flex items-center gap-4">
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${summary.accounts_receivable.late.some(l => l.id === tx.id) ? 'bg-orange-50 text-orange-500' : 'bg-green-50 text-green-500'}`}>
+                                        <Clock size={16} />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-gray-900">{tx.description}</p>
+                                        <p className="text-[10px] font-black text-gray-400 uppercase">{new Date(tx.date).toLocaleDateString('pt-BR')}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <p className="text-sm font-black text-gray-900">{formatCurrency(tx.amount)}</p>
+                                    <button onClick={() => handleTogglePaid(tx.id)} className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-all"><CheckCircle2 size={18} /></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
             </div>
 
-            {/* Gráficos */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex flex-col min-h-[400px]">
-                <h3 className="text-lg font-black text-gray-900 mb-6 flex items-center gap-2">
-                  <span className="w-2 h-6 bg-blue-600 rounded-full"></span> Gastos por Categoria
-                </h3>
-                <div className="flex-1 min-h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={summary.expenses_by_category} cx="50%" cy="50%" innerRadius="60%" outerRadius="80%" paddingAngle={8} dataKey="value">
-                        {summary.expenses_by_category.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />)}
-                      </Pie>
-                      <Tooltip formatter={(value: any) => formatCurrency(Number(value))} />
-                      <Legend iconType="circle" />
-                    </PieChart>
-                  </ResponsiveContainer>
+            {/* GRÁFICOS: CATEGORIAS E PAGAMENTOS */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col min-h-[450px]">
+                    <h3 className="text-lg font-black text-gray-900 mb-8 uppercase tracking-tight flex items-center gap-3">
+                        <div className="w-1.5 h-6 bg-blue-600 rounded-full" /> Gastos por Categoria
+                    </h3>
+                    <div className="flex-1 min-h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie 
+                                    data={summary.expenses_by_category} 
+                                    cx="50%" cy="50%" innerRadius="65%" outerRadius="85%" 
+                                    paddingAngle={10} dataKey="value"
+                                    onClick={handleCategoryClick}
+                                    className="cursor-pointer"
+                                >
+                                    {summary.expenses_by_category.map((_, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />)}
+                                </Pie>
+                                <Tooltip formatter={(val: any) => formatCurrency(Number(val))} />
+                                <Legend verticalAlign="bottom" iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
+                            </PieChart>
+                        </ResponsiveContainer>
+                    </div>
                 </div>
-              </div>
-              
-              <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex flex-col min-h-[400px]">
-                <h3 className="text-lg font-black text-gray-900 mb-6 flex items-center gap-2">
-                  <span className="w-2 h-6 bg-green-500 rounded-full"></span> Formas de Pagamento
-                </h3>
-                <div className="flex-1 min-h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={summary.expenses_by_payment_method} layout="vertical" margin={{ left: 20, right: 30 }}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
-                      <XAxis type="number" hide />
-                      <YAxis dataKey="name" type="category" width={100} axisLine={false} tickLine={false} tick={{ fontWeight: 'bold', fontSize: 12, fill: '#64748b' }} />
-                      <Tooltip formatter={(value: any) => formatCurrency(Number(value))} />
-                      <Bar dataKey="value" name="Total" fill="#3b82f6" radius={[0, 10, 10, 0]} barSize={32} />
-                    </BarChart>
-                  </ResponsiveContainer>
+
+                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100 flex flex-col min-h-[450px]">
+                    <h3 className="text-lg font-black text-gray-900 mb-8 uppercase tracking-tight flex items-center gap-3">
+                        <div className="w-1.5 h-6 bg-green-500 rounded-full" /> Métodos de Pagamento
+                    </h3>
+                    <div className="flex-1 min-h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart 
+                                data={summary.expenses_by_payment_method} 
+                                layout="vertical" 
+                                margin={{ left: 20, right: 30 }}
+                                onClick={(data: any) => data && data.activePayload && handlePaymentMethodClick(data.activePayload[0].payload)}
+                                className="cursor-pointer"
+                            >
+                                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                                <XAxis type="number" hide />
+                                <YAxis dataKey="name" type="category" width={100} axisLine={false} tickLine={false} tick={{ fontWeight: 'bold', fontSize: 11, fill: '#64748b' }} />
+                                <Tooltip formatter={(val: any) => formatCurrency(Number(val))} />
+                                <Bar dataKey="value" fill="#10b981" radius={[0, 10, 10, 0]} barSize={24} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
                 </div>
-              </div>
+            </div>
+
+            {/* ORÇAMENTOS (Seção Inferior) */}
+            <div className="bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm">
+                <div className="flex items-center justify-between mb-8">
+                    <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">Status de Orçamentos</h3>
+                    <Link href="/categories" className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline">Configurar Limites</Link>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                    {summary.budgets.slice(0, 4).map((b, i) => (
+                        <div key={i} className="space-y-3 p-4 bg-gray-50 rounded-2xl">
+                            <div className="flex justify-between items-end">
+                                <span className="text-xs font-bold text-gray-700">{b.category}</span>
+                                <span className={`text-[10px] font-black ${b.percentage > 90 ? 'text-red-600' : 'text-gray-400'}`}>{Math.round(b.percentage)}%</span>
+                            </div>
+                            <div className="w-full bg-white h-2 rounded-full overflow-hidden">
+                                <div 
+                                    className={`h-full transition-all duration-1000 ${b.percentage > 90 ? 'bg-red-500' : 'bg-blue-500'}`}
+                                    style={{ width: `${Math.min(b.percentage, 100)}%` }}
+                                ></div>
+                            </div>
+                            <p className="text-[10px] font-medium text-gray-400">{formatCurrency(b.spent)} de {formatCurrency(b.limit)}</p>
+                        </div>
+                    ))}
+                </div>
             </div>
           </>
-        ) : (
-          <div className="bg-white p-20 rounded-[3rem] text-center border-2 border-dashed border-gray-200 italic font-bold">Nenhum dado financeiro encontrado.</div>
-        )}
+        ) : null}
       </div>
     </DashboardLayout>
   );
