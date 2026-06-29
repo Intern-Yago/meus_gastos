@@ -4,7 +4,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, LabelList } from 'recharts';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -87,6 +87,7 @@ interface DashboardSummary {
     spent: number;
     percentage: number;
   }[];
+  credit_cards?: any[];
   dinheiro_livre_real: number;
   das_provisao: number;
   goals_reserva: number;
@@ -174,14 +175,16 @@ export default function DashboardPage() {
 
   // DEEP LINKS HANDLERS
   const handleCategoryClick = (data: any) => {
-    if (data && data.id) {
-      router.push(`/transactions?category_id=${data.id}&month=${month}&year=${year}`);
+    const categoryId = data?.id || data?.payload?.id;
+    if (categoryId) {
+      router.push(`/transactions?category_id=${categoryId}&month=${month}&year=${year}`);
     }
   };
 
   const handlePaymentMethodClick = (data: any) => {
-    if (data && data.name) {
-      router.push(`/transactions?payment_method=${data.name}&month=${month}&year=${year}`);
+    const paymentMethodName = data?.name || data?.payload?.name;
+    if (paymentMethodName) {
+      router.push(`/transactions?payment_method=${paymentMethodName}&month=${month}&year=${year}`);
     }
   };
 
@@ -303,26 +306,24 @@ export default function DashboardPage() {
 
                     <div className="space-y-3">
                         <div className="flex justify-between items-center border-b border-gray-50 pb-2">
-                            <span className="text-[9px] font-black text-gray-400 uppercase">1. Entradas Previstas</span>
-                            <span className="text-xs font-black text-green-500">{formatCurrency(summary.entradas_previstas_mes)}</span>
+                            <span className="text-[9px] font-black text-gray-400 uppercase">1. Saldo de Início de Mês</span>
+                            <span className="text-xs font-black text-gray-900">{formatCurrency(summary.assets_total - summary.balance)}</span>
                         </div>
                         <div className="flex justify-between items-center border-b border-gray-50 pb-2">
-                            <span className="text-[9px] font-black text-gray-400 uppercase">2. Gastos Já Realizados (Pagos)</span>
-                            <span className="text-xs font-black text-red-500">{formatCurrency(summary.despesas_pagas_mes)}</span>
+                            <span className="text-[9px] font-black text-gray-400 uppercase">2. (+) Entradas no Mês</span>
+                            <span className="text-xs font-black text-green-500">{formatCurrency(summary.total_income)}</span>
                         </div>
                         <div className="flex justify-between items-center border-b border-gray-50 pb-2">
-                            <span className="text-[9px] font-black text-gray-400 uppercase">3. Contas a Pagar (Pendentes)</span>
-                            <span className="text-xs font-black text-red-400">{formatCurrency(summary.contas_previstas_mes)}</span>
+                            <span className="text-[9px] font-black text-gray-400 uppercase">3. (-) Saídas no Mês</span>
+                            <span className="text-xs font-black text-red-500">{formatCurrency(summary.total_expense)}</span>
                         </div>
-                        {summary.das_provisao > 0 && (
-                          <div className="flex justify-between items-center border-b border-gray-50 pb-2">
-                              <span className="text-[9px] font-black text-gray-400 uppercase">4. Provisão de Impostos (DAS)</span>
-                              <span className="text-xs font-black text-orange-500">{formatCurrency(summary.das_provisao)}</span>
-                          </div>
-                        )}
                         <div className="flex justify-between items-center border-b border-gray-50 pb-2">
-                            <span className="text-[9px] font-black text-gray-400 uppercase">Sobra Estimada de Caixa</span>
-                            <span className={`text-sm font-black ${summary.sobra_provavel >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(summary.sobra_provavel)}</span>
+                            <span className="text-[9px] font-black text-gray-400 uppercase">Resultado do Mês (Líquido)</span>
+                            <span className={`text-xs font-black ${summary.balance >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatCurrency(summary.balance)}</span>
+                        </div>
+                        <div className="flex justify-between items-center border-b border-gray-50 pb-2">
+                            <span className="text-[9px] font-black text-gray-400 uppercase">Sobra Projetada (Saldo Final)</span>
+                            <span className="text-sm font-black text-blue-600">{formatCurrency(summary.assets_total)}</span>
                         </div>
                     </div>
 
@@ -348,6 +349,73 @@ export default function DashboardPage() {
                     </div>
                     <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/10 text-blue-50 font-medium leading-relaxed">
                         {report.split('\n').map((line, i) => <p key={i} className="mb-3 last:mb-0">{line}</p>)}
+                    </div>
+                </div>
+            )}
+
+            {/* CARD EXCLUSIVO DE CARTÕES DE CRÉDITO (OPÇÃO B) */}
+            {summary.credit_cards && summary.credit_cards.length > 0 && (
+                <div className="bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="bg-blue-600 p-2 rounded-xl text-white shadow-lg shadow-blue-50 flex items-center justify-center">
+                            <CreditCard size={20} />
+                        </div>
+                        <h2 className="text-lg font-black text-gray-900 uppercase tracking-tight">Meus Cartões de Crédito</h2>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {summary.credit_cards.map((card) => {
+                            const getMonthName = (m: number) => {
+                                const months = [
+                                    "Jan", "Fev", "Mar", "Abr", "Mai", "Jun", 
+                                    "Jul", "Ago", "Set", "Out", "Nov", "Dez"
+                                ];
+                                return months[(m - 1 + 12) % 12];
+                            };
+                            return (
+                                <div key={card.id} className="p-6 rounded-[2rem] border border-gray-100 bg-gray-50/20 flex flex-col justify-between min-h-[180px]">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: card.color }} />
+                                            <h3 className="text-base font-black text-gray-900">{card.name}</h3>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-[9px] font-black text-gray-400 uppercase">Limite do Cartão</p>
+                                            <p className="text-sm font-bold text-gray-900">{formatCurrency(card.limit)}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4 mb-6">
+                                        <div className="p-4 rounded-2xl bg-red-50/30 border border-red-100/50">
+                                            <p className="text-[9px] font-black text-red-500 uppercase tracking-wider mb-1">Fatura de {getMonthName(month - 1)}</p>
+                                            <p className="text-lg font-black text-red-600">{formatCurrency(card.past_bill)}</p>
+                                            <p className="text-[8px] font-bold text-gray-400 uppercase tracking-wider mt-1">Vence dia {card.due_day}</p>
+                                        </div>
+                                        <div className="p-4 rounded-2xl bg-blue-50/30 border border-blue-100/50">
+                                            <p className="text-[9px] font-black text-blue-500 uppercase tracking-wider mb-1">Fatura de {getMonthName(month)}</p>
+                                            <p className="text-lg font-black text-blue-600">{formatCurrency(card.current_bill)}</p>
+                                            <p className="text-[8px] font-bold text-gray-400 uppercase tracking-wider mt-1">Fecha dia {card.closing_day}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-gray-400">
+                                            <span>Uso do Limite</span>
+                                            <span>{card.utilization_pct.toFixed(1)}%</span>
+                                        </div>
+                                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                                            <div 
+                                                className="h-2 rounded-full transition-all" 
+                                                style={{ 
+                                                    width: `${Math.min(card.utilization_pct, 100)}%`,
+                                                    backgroundColor: card.utilization_pct > 80 ? '#ef4444' : '#3b82f6'
+                                                }} 
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}
@@ -512,7 +580,19 @@ export default function DashboardPage() {
                                     {summary.expenses_by_category.map((_, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />)}
                                 </Pie>
                                 <Tooltip formatter={(val: any) => formatCurrency(Number(val))} />
-                                <Legend verticalAlign="bottom" iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
+                                <Legend 
+                                    verticalAlign="bottom" 
+                                    iconType="circle" 
+                                    formatter={(value: any, entry: any) => {
+                                        const amount = entry.payload?.value;
+                                        return (
+                                            <span className="text-[11px] font-bold text-gray-600">
+                                                {value}: <span className="text-gray-900 font-black">{formatCurrency(amount)}</span>
+                                            </span>
+                                        );
+                                    }} 
+                                    wrapperStyle={{ paddingTop: '20px' }} 
+                                />
                             </PieChart>
                         </ResponsiveContainer>
                     </div>
@@ -535,7 +615,9 @@ export default function DashboardPage() {
                                 <XAxis type="number" hide />
                                 <YAxis dataKey="name" type="category" width={100} axisLine={false} tickLine={false} tick={{ fontWeight: 'bold', fontSize: 11, fill: '#64748b' }} />
                                 <Tooltip formatter={(val: any) => formatCurrency(Number(val))} />
-                                <Bar dataKey="value" fill="#10b981" radius={[0, 10, 10, 0]} barSize={24} />
+                                <Bar dataKey="value" fill="#10b981" radius={[0, 10, 10, 0]} barSize={24}>
+                                    <LabelList dataKey="value" position="right" formatter={(val: any) => formatCurrency(Number(val))} style={{ fontSize: 10, fontWeight: 'bold', fill: '#475569' }} />
+                                </Bar>
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
@@ -549,10 +631,14 @@ export default function DashboardPage() {
                     <Link href="/categories" className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline">Configurar Limites</Link>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                    {summary.budgets.slice(0, 4).map((b, i) => (
-                        <div key={i} className="space-y-3 p-4 bg-gray-50 rounded-2xl">
+                    {summary.budgets.slice(0, 4).map((b: any, i) => (
+                        <Link 
+                            key={i} 
+                            href={`/categories?edit_category_id=${b.category_id}`}
+                            className="space-y-3 p-4 bg-gray-50 rounded-2xl block hover:bg-blue-50/50 hover:scale-[1.02] border border-transparent hover:border-blue-100 transition-all cursor-pointer group"
+                        >
                             <div className="flex justify-between items-end">
-                                <span className="text-xs font-bold text-gray-700">{b.category}</span>
+                                <span className="text-xs font-bold text-gray-700 group-hover:text-blue-600 transition-colors">{b.category}</span>
                                 <span className={`text-[10px] font-black ${b.percentage > 90 ? 'text-red-600' : 'text-gray-400'}`}>{Math.round(b.percentage)}%</span>
                             </div>
                             <div className="w-full bg-white h-2 rounded-full overflow-hidden">
@@ -562,7 +648,7 @@ export default function DashboardPage() {
                                 ></div>
                             </div>
                             <p className="text-[10px] font-medium text-gray-400">{formatCurrency(b.spent)} de {formatCurrency(b.limit)}</p>
-                        </div>
+                        </Link>
                     ))}
                 </div>
             </div>

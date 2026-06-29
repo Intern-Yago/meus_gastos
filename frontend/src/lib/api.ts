@@ -2,10 +2,24 @@ import axios from 'axios';
 
 const getBaseURL = () => {
   if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    // Se estiver acessando localmente, fala com o backend local
-    if (host === 'localhost' || host === '127.0.0.1') {
-      return 'http://localhost:8000';
+    const { hostname, port, protocol } = window.location;
+    // Se estiver acessando localmente, fala com o backend correspondente à porta
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      if (port === '3001') {
+        return 'http://localhost:8001';
+      }
+      if (port === '3002') {
+        return 'http://localhost:8002';
+      }
+      if (port === '3000') {
+        return 'http://localhost:8000';
+      }
+      // Se acessado via porta padrão (80/443), usa o próprio origin (para o Traefik)
+      return `${protocol}//${hostname}${port ? `:${port}` : ''}`;
+    }
+    // Se for subdomínio de teste local
+    if (hostname.endsWith('.localhost')) {
+      return `${protocol}//${hostname}${port ? `:${port}` : ''}`;
     }
     // Caso contrário, usa o domínio oficial
     return 'https://api.gestaofinora.com.br';

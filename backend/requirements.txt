@@ -22,10 +22,13 @@ cors
 redis
 reportlab
 python-magic
+yfinance
+pywebpush
 python-magic-bin; sys_platform == 'win32'
 pdf2image
 pdfplumber
 Pillow
+headroom-ai[proxy]
 langchain-community
 boto3
 slowapi
@@ -33,3 +36,4 @@ httpx
 pgvector
 APScheduler
 yfinance
+pywebpush

@@ -32,6 +32,9 @@ export default function ChatPage() {
   // Voice states
   const [isAutoSpeakEnabled, setIsAutoSpeakEnabled] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  
+  // Clear chat state
+  const [isConfirmingClear, setIsConfirmingClear] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -65,6 +68,26 @@ export default function ChatPage() {
     setIsAutoSpeakEnabled(newValue);
     localStorage.setItem('finora_auto_speak', String(newValue));
     if (!newValue && isSpeaking) window.speechSynthesis.cancel();
+  };
+
+  const handleClearHistory = async () => {
+    if (!isConfirmingClear) {
+      setIsConfirmingClear(true);
+      // Cancela o modo de confirmação se o usuário não clicar novamente em 4 segundos
+      setTimeout(() => {
+        setIsConfirmingClear(false);
+      }, 4000);
+      return;
+    }
+
+    setIsConfirmingClear(false);
+    try {
+      await api.delete('/ai/history');
+      // Redefine instantaneamente o chat com a saudação padrão oficial
+      setMessages([{ role: 'assistant', content: "Olá! Sou o Finora, seu mentor de inteligência financeira de elite. Como posso ajudar você a dominar seu fluxo de caixa, planejar seus investimentos ou analisar sua saúde financeira hoje?" }]);
+    } catch (err) {
+      setErrorPopup("Erro ao limpar o histórico do chat.");
+    }
   };
 
   const scrollToBottom = () => {
@@ -152,7 +175,8 @@ export default function ChatPage() {
               processChatMessage(initPrompt);
             }, 150);
           } else {
-            await processChatMessage("[SYSTEM_INIT]", undefined, true, false);
+            // Renderiza instantaneamente a saudação oficial sem carregar latências de rede desnecessárias
+            setMessages([{ role: 'assistant', content: "Olá! Sou o Finora, seu mentor de inteligência financeira de elite. Como posso ajudar você a dominar seu fluxo de caixa, planejar seus investimentos ou analisar sua saúde financeira hoje?" }]);
           }
         }
       } catch (err) {
@@ -350,33 +374,29 @@ export default function ChatPage() {
               </div>
             </div>
           </div>
-          <button 
-            onClick={handleToggleSpeak} 
-            className={`p-2.5 rounded-2xl transition-all ${isAutoSpeakEnabled ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'bg-white text-gray-400 border border-gray-200'}`}
-          >
-            {isAutoSpeakEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleClearHistory}
+              title={isConfirmingClear ? "Clique novamente para confirmar" : "Limpar Histórico"}
+              className={`px-3 py-2.5 cursor-pointer bg-white border border-gray-200 rounded-2xl transition-all shadow-sm flex items-center gap-1.5 justify-center text-[10px] font-black uppercase tracking-wider ${
+                isConfirmingClear 
+                  ? 'bg-red-50 text-red-600 border-red-200 scale-105 shadow-red-50 animate-pulse' 
+                  : 'text-red-500 hover:bg-red-50 hover:text-red-600'
+              }`}
+            >
+              <Trash2 size={18} />
+              {isConfirmingClear && <span>Confirmar?</span>}
+            </button>
+            <button 
+              onClick={handleToggleSpeak} 
+              className={`p-2.5 cursor-pointer rounded-2xl transition-all ${isAutoSpeakEnabled ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'bg-white text-gray-400 border border-gray-200'}`}
+            >
+              {isAutoSpeakEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 scrollbar-hide bg-[#FDFDFD]">
-          {messages.map((m, i) => (
-            <div key={i} className={`flex items-end gap-2 ${m.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-              <div className={`w-8 h-8 rounded-xl flex-shrink-0 flex items-center justify-center ${m.role === 'user' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
-                {m.role === 'user' ? <User size={16} /> : <Bot size={16} />}
-              </div>
-              <div className={`group relative max-w-[85%] md:max-w-[70%] p-4 rounded-2xl shadow-sm transition-all ${
-                m.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-gray-100 text-gray-800 rounded-bl-none'
-              }`}>
-                {renderMessageContent(m.content, m.role)}
-                {m.role === 'assistant' && (
-                  <button onClick={() => speak(m.content.replace(/\[FILE_PATH: .*?\]/g, '').trim())} className="absolute -right-10 top-1/2 -translate-y-1/2 p-2 text-gray-300 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity hidden md:block">
-                    <Volume2 size={18} />
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-
           {messages.length <= 1 && (
             <div className="flex flex-col items-center justify-center text-center p-6 bg-gradient-to-b from-blue-50/40 to-transparent rounded-[2rem] border border-blue-50/50 max-w-lg mx-auto my-6 animate-in fade-in zoom-in-95 duration-500">
               <span className="text-2xl mb-2">⚡</span>
@@ -404,6 +424,24 @@ export default function ChatPage() {
               </div>
             </div>
           )}
+
+          {messages.map((m, i) => (
+            <div key={i} className={`flex items-end gap-2 ${m.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+              <div className={`w-8 h-8 rounded-xl flex-shrink-0 flex items-center justify-center ${m.role === 'user' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
+                {m.role === 'user' ? <User size={16} /> : <Bot size={16} />}
+              </div>
+              <div className={`group relative max-w-[85%] md:max-w-[70%] p-4 rounded-2xl shadow-sm transition-all ${
+                m.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-gray-100 text-gray-800 rounded-bl-none'
+              }`}>
+                {renderMessageContent(m.content, m.role)}
+                {m.role === 'assistant' && (
+                  <button onClick={() => speak(m.content.replace(/\[FILE_PATH: .*?\]/g, '').trim())} className="absolute -right-10 top-1/2 -translate-y-1/2 p-2 cursor-pointer text-gray-300 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity hidden md:block">
+                    <Volume2 size={18} />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
 
           {isLoading && (
             <div className="flex items-center gap-2">
@@ -453,7 +491,7 @@ export default function ChatPage() {
               {isRecording ? (
                 <div className="w-full h-[52px] bg-red-50 border-2 border-red-100 rounded-2xl px-4 flex items-center justify-between text-red-600 animate-pulse overflow-hidden">
                   <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <button type="button" onClick={cancelRecording} className="p-2 hover:bg-red-100 rounded-xl transition-all">
+                    <button type="button" onClick={cancelRecording} className="p-2 cursor-pointer hover:bg-red-100 rounded-xl transition-all">
                         <Trash2 size={18} />
                     </button>
                     <div className="flex gap-1 items-center justify-center h-8 w-16 flex-shrink-0 bg-red-100/30 rounded-xl">
@@ -485,7 +523,7 @@ export default function ChatPage() {
                 </div>
               )}
             </div>
-            <button type={(!input.trim() && !attachedFile) ? "button" : "submit"} onClick={(!input.trim() && !attachedFile && !isLoading) ? (isRecording ? stopRecording : startRecording) : undefined} className={`p-3.5 rounded-2xl shadow-xl transition-all active:scale-95 ${isRecording ? 'bg-red-500 text-white shadow-red-200' : 'bg-blue-600 text-white shadow-blue-200'}`}>
+            <button type={(!input.trim() && !attachedFile) ? "button" : "submit"} onClick={(!input.trim() && !attachedFile && !isLoading) ? (isRecording ? stopRecording : startRecording) : undefined} className={`p-3.5 cursor-pointer rounded-2xl shadow-xl transition-all active:scale-95 ${isRecording ? 'bg-red-500 text-white shadow-red-200' : 'bg-blue-600 text-white shadow-blue-200'}`}>
               {isLoading ? <Loader2 className="animate-spin" size={24} /> : (!input.trim() && !attachedFile) ? (isRecording ? <Square size={24} fill="currentColor" /> : <Mic size={24} />) : <Send size={24} />}
             </button>
           </form>

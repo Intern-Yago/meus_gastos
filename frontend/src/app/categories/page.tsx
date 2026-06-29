@@ -2,6 +2,7 @@
 
 import DashboardLayout from '@/components/DashboardLayout';
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { Plus, Pencil, Trash2, Tag, X, TrendingUp, TrendingDown, Search, ShoppingBag, Coffee, Car, Home, Phone, Briefcase, Heart, Utensils, Zap, Shield, Gift, Plane, Smartphone, Globe, Landmark, DollarSign, Wallet, PiggyBank } from 'lucide-react';
 
@@ -12,6 +13,7 @@ interface Category {
   color?: string;
   icon?: string;
   budget_amount?: number;
+  is_active: boolean;
 }
 
 const AVAILABLE_ICONS = [
@@ -37,11 +39,21 @@ const AVAILABLE_ICONS = [
 ];
 
 export default function CategoriesPage() {
+  const router = useRouter();
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeFilter, setActiveFilter] = useState<'active' | 'inactive' | 'all'>('active');
+
+  // Toast state
+  const [toast, setToast] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  const showToast = (type: 'success' | 'error', text: string) => {
+    setToast({ type, text });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   // Form states
   const [name, setName] = useState('');
@@ -52,8 +64,9 @@ export default function CategoriesPage() {
   const fetchCategories = async () => {
     setIsLoading(true);
     try {
+      const includeInactive = activeFilter !== 'active';
       const [catRes, budgetRes] = await Promise.all([
-        api.get('/categories/'),
+        api.get(`/categories/?include_inactive=${includeInactive}`),
         api.get('/budgets/')
       ]);
       
@@ -72,7 +85,20 @@ export default function CategoriesPage() {
 
   useEffect(() => {
     fetchCategories();
-  }, []);
+  }, [activeFilter]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && categories.length > 0) {
+      const params = new URLSearchParams(window.location.search);
+      const editId = params.get('edit_category_id');
+      if (editId) {
+        const cat = categories.find(c => c.id === parseInt(editId));
+        if (cat) {
+          handleOpenEdit(cat);
+        }
+      }
+    }
+  }, [categories]);
 
   const resetForm = () => {
     setName('');
@@ -108,33 +134,42 @@ export default function CategoriesPage() {
       if (catId) {
         if (budgetAmount && parseFloat(budgetAmount) > 0) {
           await api.post('/budgets/', { category_id: catId, amount: parseFloat(budgetAmount) });
-        } else if (editingId) {
-          // Se for edição e o valor foi zerado, opcionalmente deletar ou deixar 0
-          // Por simplicidade, vamos apenas atualizar para o novo valor (0 ou preenchido)
-          // O backend create_or_update lida com isso.
         }
       }
 
       setIsModalOpen(false);
       resetForm();
       fetchCategories();
+      showToast('success', editingId ? 'Categoria atualizada com sucesso!' : 'Categoria criada com sucesso!');
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Erro ao salvar categoria');
+      showToast('error', err.response?.data?.detail || 'Erro ao salvar categoria');
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Deseja excluir esta categoria? Transações vinculadas poderão ser afetadas.')) return;
+    if (!confirm('Deseja desativar esta categoria? Ela não aparecerá mais nos novos lançamentos, mas o histórico será mantido.')) return;
     try {
       await api.delete(`/categories/${id}`);
       fetchCategories();
+      showToast('success', 'Categoria desativada com sucesso!');
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Erro ao excluir categoria');
+      showToast('error', err.response?.data?.detail || 'Erro ao desativar categoria');
+    }
+  };
+
+  const handleReactivate = async (id: number) => {
+    try {
+      await api.post(`/categories/${id}/reactivate`);
+      fetchCategories();
+      showToast('success', 'Categoria reativada com sucesso!');
+    } catch (err: any) {
+      showToast('error', err.response?.data?.detail || 'Erro ao reativar categoria');
     }
   };
 
   const filteredCategories = categories.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase())
+    c.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
+    (activeFilter === 'all' ? true : activeFilter === 'active' ? c.is_active : !c.is_active)
   );
 
   return (
@@ -147,7 +182,7 @@ export default function CategoriesPage() {
           </div>
           <button 
             onClick={() => { resetForm(); setIsModalOpen(true); }}
-            className="flex items-center justify-center space-x-2 bg-blue-600 text-white px-6 py-3 rounded-2xl font-black shadow-lg shadow-blue-200 active:scale-95 transition-all"
+            className="flex items-center justify-center space-x-2 bg-blue-600 text-white px-6 py-3 rounded-2xl font-black shadow-lg shadow-blue-200 active:scale-95 transition-all cursor-pointer"
           >
             <Plus size={20} />
             <span>NOVA CATEGORIA</span>
@@ -156,15 +191,26 @@ export default function CategoriesPage() {
 
         {/* Busca e Resumo */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="md:col-span-2 relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-            <input 
-              type="text"
-              placeholder="Buscar categoria..."
-              className="w-full bg-white border border-gray-100 rounded-2xl pl-12 pr-4 py-4 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none shadow-sm"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+          <div className="md:col-span-2 flex gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <input 
+                type="text"
+                placeholder="Buscar categoria..."
+                className="w-full bg-white border border-gray-100 rounded-2xl pl-12 pr-4 py-4 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none shadow-sm"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <select 
+              className="bg-white border border-gray-100 rounded-2xl px-6 py-4 text-sm font-black text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm cursor-pointer"
+              value={activeFilter}
+              onChange={(e: any) => setActiveFilter(e.target.value)}
+            >
+              <option value="active">Ativas</option>
+              <option value="inactive">Desativadas</option>
+              <option value="all">Todas</option>
+            </select>
           </div>
           <div className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center justify-around shadow-sm">
             <div className="text-center">
@@ -197,7 +243,12 @@ export default function CategoriesPage() {
                     <CategoryIcon name={cat.icon} size={20} />
                   </div>
                   <div>
-                    <h3 className="font-bold text-gray-900 leading-tight">{cat.name}</h3>
+                    <h3 
+                      onClick={() => router.push(`/transactions?category_id=${cat.id}`)}
+                      className="font-bold text-gray-900 leading-tight cursor-pointer hover:text-blue-600 hover:underline transition-all"
+                    >
+                      {cat.name}
+                    </h3>
                     <div className="flex items-center gap-2">
                       <p className="text-[10px] font-black uppercase text-gray-400 tracking-tighter">
                         {cat.type === 'income' ? 'Entrada' : 'Saída'}
@@ -214,19 +265,31 @@ export default function CategoriesPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                   <button 
                     onClick={() => handleOpenEdit(cat)}
-                    className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                    className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all cursor-pointer"
+                    title="Editar"
                   >
                     <Pencil size={16} />
                   </button>
-                  <button 
-                    onClick={() => handleDelete(cat.id)}
-                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  {cat.is_active ? (
+                    <button 
+                      onClick={() => handleDelete(cat.id)}
+                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all cursor-pointer"
+                      title="Desativar"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={() => handleReactivate(cat.id)}
+                      className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all cursor-pointer"
+                      title="Reativar"
+                    >
+                      <Plus size={16} />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -242,7 +305,7 @@ export default function CategoriesPage() {
                   <h2 className="text-2xl font-black text-gray-900 tracking-tight">{editingId ? 'Editar Categoria' : 'Nova Categoria'}</h2>
                   <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Organização de Fluxo</p>
                 </div>
-                <button onClick={() => setIsModalOpen(false)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-2xl"><X size={28} /></button>
+                <button onClick={() => setIsModalOpen(false)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-2xl cursor-pointer"><X size={28} /></button>
               </div>
 
               <form onSubmit={handleSubmit} className="p-8 space-y-6">
@@ -251,14 +314,14 @@ export default function CategoriesPage() {
                   <button 
                     type="button"
                     onClick={() => setType('expense')}
-                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-[1rem] font-black text-xs uppercase transition-all ${type === 'expense' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-[1rem] font-black text-xs uppercase transition-all cursor-pointer ${type === 'expense' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
                   >
                     <TrendingDown size={14} /> GASTO
                   </button>
                   <button 
                     type="button"
                     onClick={() => setType('income')}
-                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-[1rem] font-black text-xs uppercase transition-all ${type === 'income' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-[1rem] font-black text-xs uppercase transition-all cursor-pointer ${type === 'income' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
                   >
                     <TrendingUp size={14} /> RECEITA
                   </button>
@@ -269,7 +332,7 @@ export default function CategoriesPage() {
                   <input 
                     type="text" 
                     required 
-                    className="w-full bg-gray-50 border-none rounded-[1.2rem] px-5 py-4 text-gray-900 font-bold focus:ring-2 focus:ring-blue-500 outline-none shadow-inner" 
+                    className="w-full bg-gray-50 border-none rounded-[1.2rem] px-5 py-4 text-gray-900 font-bold focus:ring-2 focus:ring-blue-500 outline-none shadow-inner animate-none" 
                     value={name} 
                     onChange={e => setName(e.target.value)} 
                     placeholder="Ex: Alimentação, Lazer..."
@@ -301,7 +364,7 @@ export default function CategoriesPage() {
                           key={item.name}
                           type="button"
                           onClick={() => setIcon(item.name)}
-                          className={`flex items-center justify-center p-3 rounded-xl transition-all ${icon === item.name ? 'bg-blue-600 text-white shadow-lg scale-110' : 'bg-white text-gray-400 hover:bg-blue-50 hover:text-blue-600'}`}
+                          className={`flex items-center justify-center p-3 rounded-xl transition-all cursor-pointer ${icon === item.name ? 'bg-blue-600 text-white shadow-lg scale-110' : 'bg-white text-gray-400 hover:bg-blue-50 hover:text-blue-600'}`}
                         >
                           <IconComp size={20} />
                         </button>
@@ -312,7 +375,7 @@ export default function CategoriesPage() {
 
                 <button 
                   type="submit" 
-                  className="w-full bg-gray-900 text-white py-5 rounded-[1.5rem] font-black text-lg hover:bg-black transition-all shadow-xl shadow-gray-200 active:scale-95 mt-4"
+                  className="w-full bg-gray-900 text-white py-5 rounded-[1.5rem] font-black text-lg hover:bg-black transition-all shadow-xl shadow-gray-200 active:scale-95 mt-4 cursor-pointer"
                 >
                   {editingId ? 'SALVAR ALTERAÇÕES' : 'CRIAR CATEGORIA'}
                 </button>
@@ -321,6 +384,14 @@ export default function CategoriesPage() {
           </div>
         )}
       </div>
+
+      {toast && (
+        <div className={`fixed bottom-8 right-8 z-[250] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl text-white font-black text-xs uppercase tracking-wider animate-in slide-in-from-bottom-5 duration-300 border ${toast.type === 'success' ? 'bg-emerald-600 border-emerald-500 shadow-emerald-100' : 'bg-red-600 border-red-500 shadow-red-100'}`}>
+          <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+          <span>{toast.text}</span>
+          <button onClick={() => setToast(null)} className="ml-4 p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"><X size={16} /></button>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

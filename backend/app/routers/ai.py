@@ -43,6 +43,17 @@ def get_chat_history(current_user: models.User = Depends(get_current_user)):
         print(f"DEBUG: Error fetching chat history: {str(e)}")
     return []
 
+@router.delete("/history")
+def delete_chat_history(current_user: models.User = Depends(get_current_user)):
+    """Exclui o histórico do chat no Redis."""
+    try:
+        history_key = f"chat_history:{current_user.id}"
+        r.delete(history_key)
+        return {"message": "Histórico limpo com sucesso"}
+    except Exception as e:
+        print(f"DEBUG: Error deleting chat history: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erro ao limpar histórico: {str(e)}")
+
 # --- TOOL DEFINITIONS ---
 
 @tool
@@ -148,6 +159,8 @@ def register_transaction_tool(
     - Payment Method: 'PIX', 'CREDIT_CARD', 'DEBIT_CARD', 'CASH', 'TRANSFER', 'BOLETO' ou 'OTHERS'.
     - attachment_path: Caminho do arquivo de comprovante (se houver).
     - Use 'original_currency' para moedas estrangeiras (USD, EUR).
+    - ticker: Se for renda variável ou ativo cotado (FIIs, ações, BDRs, ex: 'mxrf11', 'petr4', 'ivvb11'), você DEVE passar o ticker em maiúsculo (ex: "MXRF11").
+    - shares: Se houver quantidade de cotas/ações (ex: '8 cotas', '10 ações'), passe o número (ex: 8.0) em 'shares'.
     - force_new_registration: Se True, força o registro novo mesmo se houver uma conta pendente similar.
     """
     return f"Transação registrada."
@@ -265,14 +278,111 @@ async def chat_with_ai(
     now_dt = datetime.now()
     today_str = now_dt.strftime("%A, %d de %B de %Y")
 
+    # === CÁLCULO DE DADOS FINANCEIROS REAIS DO USUÁRIO AO VIVO PARA INJETAR NO PROMPT (GARANTE ZERO ERROS DE CONTEXTO) ===
+    accounts = db.query(models.Account).filter(models.Account.user_id == current_user.id).all()
+    initial_balances = sum(acc.initial_balance or 0.0 for acc in accounts)
+    total_income_paid = db.query(func.sum(models.Transaction.amount)).filter(
+        models.Transaction.user_id == current_user.id,
+        models.Transaction.type == 'income',
+        models.Transaction.is_paid == True
+    ).scalar() or 0.0
+    total_expense_paid = db.query(func.sum(models.Transaction.amount)).filter(
+        models.Transaction.user_id == current_user.id,
+        models.Transaction.type == 'expense',
+        models.Transaction.is_paid == True,
+        models.Transaction.payment_method != "CREDIT_CARD"
+    ).scalar() or 0.0
+    current_balance = initial_balances + total_income_paid - total_expense_paid
+    
+    import calendar
+    now_temp = datetime.now()
+    _, last_day = calendar.monthrange(now_temp.year, now_temp.month)
+    end_of_current_month = datetime(now_temp.year, now_temp.month, last_day, 23, 59, 59)
+    
+    liabilities_pending = db.query(func.sum(models.Transaction.amount)).filter(
+        models.Transaction.user_id == current_user.id,
+        models.Transaction.type == 'expense',
+        models.Transaction.is_paid == False,
+        models.Transaction.date <= end_of_current_month
+    ).scalar() or 0.0
+    
+    prev_month_temp = now_temp.month - 1 if now_temp.month > 1 else 12
+    prev_year_temp = now_temp.year if now_temp.month > 1 else now_temp.year - 1
+    
+    prev_month_credit_spent = db.query(func.sum(models.Transaction.amount)).filter(
+        models.Transaction.user_id == current_user.id,
+        models.Transaction.type == 'expense',
+        models.Transaction.payment_method == 'CREDIT_CARD',
+        models.Transaction.is_paid == True,
+        func.extract('month', models.Transaction.date) == prev_month_temp,
+        func.extract('year', models.Transaction.date) == prev_year_temp
+    ).scalar() or 0.0
+    
+    liabilities = liabilities_pending + prev_month_credit_spent
+    net_worth = current_balance - liabilities
+    
+    next_month_temp = now_temp.month + 1 if now_temp.month < 12 else 1
+    next_year_temp = now_temp.year if now_temp.month < 12 else now_temp.year + 1
+    
+    pending_income_next_month = db.query(func.sum(models.Transaction.amount)).filter(
+        models.Transaction.user_id == current_user.id,
+        models.Transaction.type == 'income',
+        models.Transaction.is_paid == False,
+        func.extract('month', models.Transaction.date) == next_month_temp,
+        func.extract('year', models.Transaction.date) == next_year_temp
+    ).scalar() or 0.0
+    
+    pending_expense_next_month_boletos = db.query(func.sum(models.Transaction.amount)).filter(
+        models.Transaction.user_id == current_user.id,
+        models.Transaction.type == 'expense',
+        models.Transaction.is_paid == False,
+        func.extract('month', models.Transaction.date) == next_month_temp,
+        func.extract('year', models.Transaction.date) == next_year_temp
+    ).scalar() or 0.0
+    
+    current_month_credit_spent = db.query(func.sum(models.Transaction.amount)).filter(
+        models.Transaction.user_id == current_user.id,
+        models.Transaction.type == 'expense',
+        models.Transaction.payment_method == 'CREDIT_CARD',
+        models.Transaction.is_paid == True,
+        func.extract('month', models.Transaction.date) == now_temp.month,
+        func.extract('year', models.Transaction.date) == now_temp.year
+    ).scalar() or 0.0
+    
+    pending_expense_next_month = pending_expense_next_month_boletos + current_month_credit_spent
+
     system_prompt = f"""
-    Você é o Finora, o mentor de inteligência financeira de elite para {current_user.name}. 
-    Sua persona é sofisticada, ultra-proativa, concisa e imponente.
+    Você é o Oráculo do Finora, o mentor e estrategista financeiro de elite de {current_user.name}.
+    
+    FILOSOFIA E PROPÓSITO ABSOLUTO (LEIA COM EXTREMA ATENÇÃO):
+    Você NÃO existe simplesmente para responder perguntas ou "controlar despesas". Você existe para aumentar a riqueza, o patrimônio e garantir a tranquilidade financeira do usuário ao longo da vida.
+    O Finora mede o seu sucesso pela evolução financeira do usuário ao longo dos anos, e não pela quantidade de ferramentas que você chama.
+    Você "vive no tempo": lembre-se dos objetivos do usuário, recalcule rotas quando a vida dele mudar (ex: um gasto excessivo ou uma nova receita), e celebre quando metas forem atingidas.
+    
+    SEU PROCESSO DE PENSAMENTO OBRIGATÓRIO (ORIENTADO A OBJETIVOS, NÃO A FERRAMENTAS):
+    Sempre que o usuário falar algo, antes de usar qualquer ferramenta ou dar uma resposta, siga mentalmente esta ordem:
+    1. Objetivo de vida detectado? (O que ele realmente quer? Ex: Comprar uma casa, abrir uma empresa, aposentar).
+    2. Planejamento (Qual o prazo e a viabilidade matemática?).
+    3. Patrimônio e Fluxo de Caixa (Como o caixa atual e o projetado sustentam isso?).
+    4. Investimentos (Onde o dinheiro deve estar para isso acontecer de forma segura?).
+    5. Só então, decida quais ferramentas do sistema usar por baixo dos panos.
+    
+    Sua persona é sofisticada, ultra-proativa, concisa e consultiva. NUNCA seja um "chefe" que dá ordens impositivas (Ex: "Você deve investir R$ 2.000"). Seja um Mentor Estratégico (Ex: "Para manter o prazo da sua Casa, o ideal seria aportar cerca de R$ 2.000. Prefere que eu recalcule o plano considerando um aporte menor ou um prazo maior?"). O usuário SEMPRE continua no controle.
+    
+    CONTA DO USUÁRIO E CAIXA AO VIVO REAL (USE ESTES DADOS COM PRIORIDADE ABSOLUTA - REAIS E FIÉIS):
+    - saldo_disponivel_total: R$ {current_balance:.2f}
+    - passivos_totais: R$ {liabilities:.2f}
+    - patrimonio_liquido: R$ {net_worth:.2f}
+    - entradas_pendentes_proximo_mes: R$ {pending_income_next_month:.2f}
+    - saidas_pendentes_proximo_mes: R$ {pending_expense_next_month:.2f}
+    - total_compras_credito_mes_atual: R$ {current_month_credit_spent:.2f}
     
     DATA/HORA ATUAL DO SISTEMA: {today_str} (Use este ano {now_dt.year} como referência absoluta para qualquer meta, transação, contas, relatórios ou agendamento. NUNCA use anos passados como 2024 se hoje já for {now_dt.year}).
     
     DIRETRIZES DE OURO:
     1. AÇÕES ANTES DE RESUMOS: Se o usuário enviar um extrato ou pedir registros de despesas/entradas reais cujos detalhes (descrições e valores reais) foram fornecidos, você DEVE chamar 'register_transaction_tool' para CADA item antes de dar qualquer resposta final. Se os dados reais não forem informados, NUNCA chame as ferramentas de registro e peça esclarecimentos primeiro (conforme a Regra 10).
+       - EXCEÇÃO DE ATUALIZAÇÃO HISTÓRICA ("SEM REDUZIR SALDO", "SUBA ZERADO"): Se o usuário solicitar a criação de investimentos ou despesas, mas disser "sem reduzir o saldo", "sem tirar do saldo atual", "como lançamento por 0 reais", "subir zerado" ou que está "apenas atualizando/conciliando as contas por hora":
+         Você DEVE calcular a soma total de todos os itens informados (ex: R$ 423,39 + R$ 293,36 + R$ 77,44 + R$ 28,71 = R$ 822,90) e fazer uma chamada adicional à ferramenta 'register_transaction_tool' para registrar uma Entrada (type='income', is_paid=True, category_name='Reconciliação', description='Compensação de Saldo Histórico', amount=822.90) JUNTAMENTE com as chamadas de despesas/investimentos normais. Isso compensa e anula o impacto no caixa de forma correta, preservando o valor real dos ativos!
     2. CONFIRMAÇÃO DE REGISTRO: Sempre que registrar uma transação de imagem/comprovante, sua resposta final DEVE ser: 
        "✅ Registro Concluído: [Título] | [Data] | [Valor]"
     3. ANEXOS: Se você estiver processando uma imagem, você DEVE garantir que o 'attachment_path' seja enviado para a ferramenta 'register_transaction_tool'.
@@ -300,16 +410,43 @@ async def chat_with_ai(
        No entanto, se o usuário fornecer a descrição e o valor de uma despesa (ex: "pão, 10 reais"), você DEVE deduzir a categoria correspondente de forma inteligente por conta própria (ex: pão -> categoria "Alimentação") e assumir a data como hoje, registrando a transação imediatamente SEM parar a conversa para fazer perguntas óbvias que você consegue deduzir de forma autônoma! Só interrompa o fluxo para pedir esclarecimentos se de fato faltar a descrição ou o valor real do item.
     
     11. MENTORIA DE INVESTIMENTOS E EDUCAÇÃO FINANCEIRA (PROFILING ATIVO): O Finora é uma plataforma de educação e mentoria de investimentos, e não apenas controle. Quando o usuário perguntar sobre mercado financeiro, investimentos, ou se um ativo (ex: MANA11) é viável para ele:
-       a) CONSULTE O CAIXA E VERIFIQUE DÉFICIT: Sempre use 'get_financial_summary_tool' primeiro. Se o usuário estiver com o caixa geral ou saldo disponível no vermelho (crítico ou negativo), você DEVE alertá-lo imediatamente e dar uma "chamada de atenção" elegante mas firme: explique que **não é recomendado realizar nenhum investimento no momento**, pois a prioridade absoluta é recuperar o saldo e sanear o caixa. Sugira criar uma meta de recuperação ou limitar despesas com orçamentos primeiro.
+       a) CONSULTE O CAIXA E VERIFIQUE DÉFICIT: Você DEVE obrigatoriamente executar uma NOVA chamada em tempo real para 'get_financial_summary_tool' a cada nova pergunta para garantir que você está lendo dados de caixa 100% atualizados ao vivo e nunca use dados antigos do histórico da conversa! Analise o 'saldo_disponivel_total' e a faturas/contas a pagar do próximo mês ('saidas_pendentes_proximo_mes') para calcular o **Dinheiro Máximo Seguro para Investir Hoje**:
+          **FÓRMULA OBRIGATÓRIA DE LIQUIDEZ:**
+          `Dinheiro_Investivel_Hoje = saldo_disponivel_total - saidas_pendentes_proximo_mes`
+          Você está **expressamente proibido** de sugerir alocar ou investir todo o seu saldo em conta, pois o usuário precisa manter liquidez para pagar as faturas do cartão e contas que vencem no início do mês antes do salário chegar!
+          - Se `Dinheiro_Investivel_Hoje` for menor ou igual a zero, explique de forma clara e amigável que todo o saldo atual em conta está comprometido com as faturas/contas do próximo mês e que ele deve **aguardar e preservar a liquidez em conta** para pagar as faturas!
+          - Se o usuário tiver uma receita futura prevista (como o recebível de R$ 1.000 para o dia 5), inclua-o na projeção: mostre que após pagar as contas de R$ 591,33 e receber os R$ 1.000, o saldo livre de segurança saltará para R$ 1.198,26, o que criará uma excelente folga para investir no futuro, mas que **hoje** o limite seguro máximo para retirar da conta para investir é de apenas **R$ 198,26**!
        b) RECONHEÇA O PERFIL: Verifique se você já tem em suas memórias de longo prazo (memories_context) o perfil de investidor dele (Conservador, Moderado, Arrojado).
        c) EXIJA O PROFILING SE DESCONHECIDO: Se o perfil do usuário for desconhecido nas memórias, você está **expressamente proibido** de fazer sugestões de alocação ou analisar a viabilidade de ativos às cegas! Explique que para dar qualquer diretriz segura, precisa conhecer o perfil dele. Faça imediatamente um questionário proativo de 3 perguntas curtas e padrão de profiling (ex: tolerância a perdas/oscilações, horizonte de tempo para resgatar o dinheiro, e conhecimento de mercado). Grave o perfil dele em sua memória com 'save_memory_tool' assim que ele responder!
-       d) ALOCAÇÃO ATIVA COM VALORES REAIS: Se o perfil for conhecido e o saldo for positivo, faça sugestões didáticas com ativos reais brasileiros (MXRF11, MANA11, ETFs, Tesouro, etc.) e estabeleça **valores numéricos exatos** recomendados de alocação de forma proporcional e responsável baseado na sobra líquida de caixa real dele (ex: "Sua sobra líquida é de R$ 500. Dado seu perfil Moderado, sugiro colocar R$ 200 no Tesouro Selic, R$ 150 no FII MXRF11...").
+       d) ALOCAÇÃO ATIVA COM VALORES REAIS: Se o perfil for conhecido e houver saldo investível hoje (`Dinheiro_Investivel_Hoje` > 0), calcule as porcentagens recomendadas de alocação (ex: 40% em Renda Fixa, 30% em FIIs, 30% em Ações) **incidindo única e exclusivamente sobre o valor de `Dinheiro_Investivel_Hoje` (ex: R$ 198,26)** e nunca sobre o saldo total! Apresente sugestões didáticas com ativos reais brasileiros (MXRF11, MANA11, ETFs, Tesouro, etc.) com valores numéricos exatos de forma proporcional e responsável.
        e) DISCLAIMER LEGAL OBRIGATÓRIO: Sempre enfatize de forma clara que você é um mentor inteligente para fins didáticos/educacionais e que suas sugestões são apenas simulações e referências de apoio, e não recomendações formais de compra e venda de ativos ou assessoria de investimentos profissional.
+    
+    12. CONTAS A PAGAR E RECEBER (RECEBÍVEIS PENDENTES/FUTUROS): Se o usuário solicitar o registro ou agendamento de uma despesa futura (conta a pagar) ou uma receita futura (conta a receber/recebível, ex: "registre para dia 5 do próximo mês para receber mil reais, salário do rossol"):
+       - Você DEVE calcular a data futura com precisão baseado na data atual do sistema e passá-la no formato ISO "YYYY-MM-DD" no parâmetro `date` (ex: se hoje é 24 de Junho de 2026, "dia 5 do próximo mês" é exatamente "2026-07-05"). NUNCA deixe a data em branco ou no dia de hoje para transações futuras!
+       - Para receitas/recebíveis futuros (salários, recebimentos, faturamento), você DEVE passar explicitamente o parâmetro `type='income'` e `is_paid=False`. NUNCA use o tipo despesa (expense) para salários ou recebimentos!
+       - Para despesas/contas a pagar futuras (boletos, faturas, aluguel), você DEVE passar explicitamente o parâmetro `type='expense'` e `is_paid=False`.
+       - Isso garante que a transação seja salva no sistema como pendente/futura, de modo que apareça corretamente nas telas de 'Contas a Receber' (Recebíveis) ou 'Contas a Pagar', em vez de ser lançada como já recebida ou paga hoje!
+    
+    13. REGISTRO DE ATIVOS E INVESTIMENTOS (TICKER E COTAS): Sempre que o usuário registrar a compra, aporte ou posse de um investimento em renda variável, ações, FIIs ou fundos cotados (ex: 'mxrf11', '8 cotas no mxfr11', 'compra de 10 ações da petr4'):
+       - Você DEVE extrair e passar o ticker correto em letras MAIÚSCULAS no parâmetro `ticker` de 'register_transaction_tool'.
+       - **AUTO-CORREÇÃO DE TYPOS:** Faça uma validação inteligente do ticker para corrigir erros de digitação comuns do usuário (ex: se ele digitar "MXFR11", corrija automaticamente para o ticker oficial correto que é "MXRF11"; normalize "PETR-4" ou "PETR4.SA" para "PETR4"). Garanta que o parâmetro enviado para a ferramenta seja sempre o ticker oficial correto da B3!
+       - Você DEVE extrair a quantidade de cotas/ações compradas (ex: '8 cotas' -> 8.0, '10 ações' -> 10.0) e passá-la no parâmetro `shares` de 'register_transaction_tool'.
+       - Nunca deixe o ticker ou shares em branco ao registrar esses ativos cotados! Isso é fundamental para que o sistema possa buscá-los em tempo real na Bolsa de Valores (B3) e mostrá-los na Carteira de Investimentos do usuário!
+
+    14. ALERTA DE GASTOS EXCESSIVOS NO CARTÃO DE CRÉDITO: Sempre que o usuário registrar uma nova despesa no cartão de crédito, ou perguntar sobre seus gastos gerais ou do cartão, você deve agir com proatividade e verificar se a fatura do cartão deste mês ou do próximo mês está excessiva em comparação com a sua renda/saldo. Se os gastos em faturas comprometerem mais de 30% do saldo ou se houver um aumento repentino de compras parceladas, faça um alerta amigável, firme e bem-humorado: "Ei, cuidado! Reparei que os seus gastos no cartão de crédito estão subindo de forma expressiva este mês...". Seja o mentor financeiro de elite vigilante!
+    
+    15. PROIBIÇÃO DE LATEX OU NOTAÇÃO MATEMÁTICA COMPLEXA: Você está EXPRESSAMENTE PROIBIDO de utilizar qualquer tipo de notação matemática LaTeX ou delimitadores de equações (como [ \\text{...} ], \\[, \\], $$, ou \\text) em suas respostas finais! Nosso chat não possui renderizador de fórmulas LaTeX. Exiba equações, cálculos e fórmulas matemáticas usando EXCLUSIVAMENTE texto puro legível e formatado em Markdown padrão simples (ex: "**Dinheiro Seguro para Investir Hoje = Saldo Disponível - Fatura do Cartão = R$ 500,00 - R$ 200,00 = R$ 300,00**").
     
     {memories_context}
     """
 
-    chat = ChatOpenAI(model="gpt-4o-mini", api_key=api_key, timeout=45).bind_tools(all_tools_objs)
+    # Roteamento inteligente através do proxy do Headroom para compressão de tokens e economia de custos (até 90%)
+    chat = ChatOpenAI(
+        model="gpt-4o-mini", 
+        api_key=api_key, 
+        base_url="http://127.0.0.1:8787/v1",
+        timeout=45
+    ).bind_tools(all_tools_objs)
     
     # 3. CONSTRUÇÃO DA MENSAGEM (MULTIMODAL)
     messages = [SystemMessage(content=system_prompt)]
@@ -850,11 +987,34 @@ async def chat_with_ai(
                         models.Transaction.payment_method != "CREDIT_CARD"
                     ).scalar() or 0.0
                     current_balance = initial_balances + total_income_paid - total_expense_paid
-                    liabilities = db.query(func.sum(models.Transaction.amount)).filter(
+                    
+                    # Pegar o último dia do mês atual para evitar somar parcelas futuras como dívidas ativas do mês corrente
+                    import calendar
+                    now_temp = datetime.now()
+                    _, last_day = calendar.monthrange(now_temp.year, now_temp.month)
+                    end_of_current_month = datetime(now_temp.year, now_temp.month, last_day, 23, 59, 59)
+                    
+                    liabilities_pending = db.query(func.sum(models.Transaction.amount)).filter(
                         models.Transaction.user_id == current_user.id,
                         models.Transaction.type == 'expense',
-                        models.Transaction.is_paid == False
+                        models.Transaction.is_paid == False,
+                        models.Transaction.date <= end_of_current_month
                     ).scalar() or 0.0
+                    
+                    # Fatura de Cartão de Crédito em aberto (Gastos de crédito do mês anterior que vencem no mês atual)
+                    prev_month_temp = now_temp.month - 1 if now_temp.month > 1 else 12
+                    prev_year_temp = now_temp.year if now_temp.month > 1 else now_temp.year - 1
+                    
+                    prev_month_credit_spent = db.query(func.sum(models.Transaction.amount)).filter(
+                        models.Transaction.user_id == current_user.id,
+                        models.Transaction.type == 'expense',
+                        models.Transaction.payment_method == 'CREDIT_CARD',
+                        models.Transaction.is_paid == True,
+                        func.extract('month', models.Transaction.date) == prev_month_temp,
+                        func.extract('year', models.Transaction.date) == prev_year_temp
+                    ).scalar() or 0.0
+                    
+                    liabilities = liabilities_pending + prev_month_credit_spent
                     net_worth = current_balance - liabilities
                     
                     now = datetime.now()
@@ -874,6 +1034,40 @@ async def chat_with_ai(
                     ).scalar() or 0.0
                     projected_balance = current_balance + pending_income_month - pending_expense_month
                     
+                    # Calcular contas a pagar (recebíveis) e contas a pagar do próximo mês
+                    next_month_temp = now.month + 1 if now.month < 12 else 1
+                    next_year_temp = now.year if now.month < 12 else now.year + 1
+                    
+                    pending_income_next_month = db.query(func.sum(models.Transaction.amount)).filter(
+                        models.Transaction.user_id == current_user.id,
+                        models.Transaction.type == 'income',
+                        models.Transaction.is_paid == False,
+                        func.extract('month', models.Transaction.date) == next_month_temp,
+                        func.extract('year', models.Transaction.date) == next_year_temp
+                    ).scalar() or 0.0
+                    
+                    # 1. Boletos e contas normais agendadas para o próximo mês:
+                    pending_expense_next_month_boletos = db.query(func.sum(models.Transaction.amount)).filter(
+                        models.Transaction.user_id == current_user.id,
+                        models.Transaction.type == 'expense',
+                        models.Transaction.is_paid == False,
+                        func.extract('month', models.Transaction.date) == next_month_temp,
+                        func.extract('year', models.Transaction.date) == next_year_temp
+                    ).scalar() or 0.0
+                    
+                    # 2. Fatura do cartão de crédito gasta no mês ATUAL (que vence no próximo mês):
+                    current_month_credit_spent = db.query(func.sum(models.Transaction.amount)).filter(
+                        models.Transaction.user_id == current_user.id,
+                        models.Transaction.type == 'expense',
+                        models.Transaction.payment_method == 'CREDIT_CARD',
+                        models.Transaction.is_paid == True,
+                        func.extract('month', models.Transaction.date) == now_temp.month,
+                        func.extract('year', models.Transaction.date) == now_temp.year
+                    ).scalar() or 0.0
+                    
+                    # O total real de saídas do próximo mês é a soma de boletos em aberto de Julho + faturas spend de Junho
+                    pending_expense_next_month = pending_expense_next_month_boletos + current_month_credit_spent
+                    
                     # Busca e agrupa os projetos/silos ativos
                     active_projects = db.query(models.Project).filter(
                         models.Project.user_id == current_user.id,
@@ -886,9 +1080,11 @@ async def chat_with_ai(
                         "saldo_disponivel_total": current_balance,
                         "passivos_totais": liabilities,
                         "patrimonio_liquido": net_worth,
-                        "entradas_pendentes_mes": pending_income_month,
-                        "saidas_pendentes_mes": pending_expense_month,
-                        "saldo_projetado_fim_mes": projected_balance,
+                        "entradas_pendentes_mes_atual": pending_income_month,
+                        "saidas_pendentes_mes_atual": pending_expense_month,
+                        "saldo_projetado_fim_mes_atual": projected_balance,
+                        "entradas_pendentes_proximo_mes": pending_income_next_month,
+                        "saidas_pendentes_proximo_mes": pending_expense_next_month,
                         "contas_usuario": [acc.name for acc in accounts],
                         "lojas_negocios_ativos": silos_business,
                         "projetos_pessoais_ativos": silos_personal

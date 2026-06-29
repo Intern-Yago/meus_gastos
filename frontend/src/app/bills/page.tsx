@@ -3,7 +3,7 @@
 import DashboardLayout from '@/components/DashboardLayout';
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
-import { AlertCircle, CheckCircle2, Clock, Calendar, Wallet, ArrowRight, CreditCard } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock, Calendar, Wallet, ArrowRight, CreditCard, Plus, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface Account {
@@ -30,9 +30,27 @@ export default function BillsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accountId, setAccountId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Toast state
+  const [toast, setToast] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  const showToast = (type: 'success' | 'error', text: string) => {
+    setToast({ type, text });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  // Modal State for New Bill
+  const [isNewBillModalOpen, setIsNewBillModalOpen] = useState(false);
+  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [targetAccountId, setTargetAccountId] = useState('');
+
+  // Partial Payment Modal State
   const [selectedBill, setSelectedBill] = useState<Transaction | null>(null);
   const [partialAmount, setPartialAmount] = useState('');
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPartialModalOpen, setIsPartialModalOpen] = useState(false);
+  
   const router = useRouter();
 
   const fetchBills = async () => {
@@ -52,6 +70,8 @@ export default function BillsPage() {
     try {
       const res = await api.get('/accounts/');
       setAccounts(res.data);
+      const defaultAcc = res.data.find((a: Account) => a.is_default);
+      if (defaultAcc) setTargetAccountId(defaultAcc.id.toString());
     } catch (err) {}
   };
 
@@ -65,8 +85,10 @@ export default function BillsPage() {
       const res = await api.get(`/transactions/${id}`);
       await api.put(`/transactions/${id}`, { ...res.data, is_paid: true, amount_paid: res.data.amount });
       fetchBills();
+      showToast('success', 'Conta quitada com sucesso!');
     } catch (err) {
       console.error('Erro ao pagar conta:', err);
+      showToast('error', 'Erro ao pagar conta');
     }
   };
 
@@ -79,12 +101,36 @@ export default function BillsPage() {
         amount_paid: newAmountPaid,
         is_paid: newAmountPaid >= selectedBill.amount
       });
-      setIsModalOpen(false);
+      setIsPartialModalOpen(false);
       setPartialAmount('');
       setSelectedBill(null);
       fetchBills();
+      showToast('success', 'Pagamento parcial registrado!');
     } catch (err) {
       console.error('Erro no pagamento parcial:', err);
+      showToast('error', 'Erro no pagamento parcial');
+    }
+  };
+
+  const handleSubmitNewBill = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await api.post('/transactions/', {
+        amount: parseFloat(amount),
+        description,
+        date: new Date(date).toISOString(),
+        account_id: parseInt(targetAccountId),
+        type: 'expense',
+        is_paid: false,
+        payment_method: 'BOLETO'
+      });
+      setIsNewBillModalOpen(false);
+      setAmount('');
+      setDescription('');
+      fetchBills();
+      showToast('success', 'Conta a pagar cadastrada!');
+    } catch (err) {
+      showToast('error', 'Erro ao cadastrar conta a pagar');
     }
   };
 
@@ -95,23 +141,32 @@ export default function BillsPage() {
   return (
     <DashboardLayout>
       <div className="space-y-8 pb-20">
-        <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4">
+        <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-6">
           <div className="flex flex-col gap-2">
             <h1 className="text-3xl font-black text-gray-900 tracking-tight">Contas a Pagar</h1>
-            <p className="text-gray-400 text-sm font-medium">Gestão proativa de faturas e compromissos fixos.</p>
+            <p className="text-gray-400 text-sm font-medium uppercase tracking-widest text-[10px] font-black">Gestão de Obrigações Financeiras</p>
           </div>
           
-          <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100 w-fit">
-            <div className="flex items-center gap-1.5 px-3 py-1.5">
-              <CreditCard size={16} className="text-gray-400" />
-              <select 
-                value={accountId} 
-                onChange={(e) => setAccountId(e.target.value)}
-                className="bg-transparent border-none rounded-xl text-sm font-black text-gray-900 focus:ring-0 cursor-pointer p-0"
-              >
-                <option value="">Todas as Contas</option>
-                {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-              </select>
+          <div className="flex flex-wrap items-center gap-3">
+            <button 
+              onClick={() => setIsNewBillModalOpen(true)}
+              className="flex items-center cursor-pointer gap-2 px-6 py-3 bg-red-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-100 active:scale-95"
+            >
+              <Plus size={18} /> Novo Registro
+            </button>
+
+            <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100 w-fit">
+              <div className="flex items-center gap-1.5 px-3 py-1.5">
+                <CreditCard size={16} className="text-gray-400" />
+                <select 
+                  value={accountId} 
+                  onChange={(e) => setAccountId(e.target.value)}
+                  className="bg-transparent border-none rounded-xl text-sm font-black text-gray-900 focus:ring-0 cursor-pointer p-0"
+                >
+                  <option value="" className="cursor-pointer">Todas as Contas</option>
+                  {accounts.map(acc => <option key={acc.id} value={acc.id} className="cursor-pointer">{acc.name}</option>)}
+                </select>
+              </div>
             </div>
           </div>
         </div>
@@ -130,10 +185,10 @@ export default function BillsPage() {
               <h2 className="text-xl font-bold text-gray-800">Tudo em dia!</h2>
               <p className="text-gray-500 leading-relaxed">Você não possui nenhuma conta fixa pendente para este mês. Bom trabalho!</p>
               <button 
-                onClick={() => router.push('/dashboard')}
-                className="inline-flex items-center gap-2 text-blue-600 font-black uppercase text-xs tracking-widest hover:underline"
+                onClick={() => setIsNewBillModalOpen(true)}
+                className="inline-flex items-center gap-2 text-blue-600 font-black uppercase text-xs tracking-widest hover:underline cursor-pointer"
               >
-                Voltar ao Dashboard <ArrowRight size={16} />
+                Cadastrar Primeira Conta <ArrowRight size={16} />
               </button>
             </div>
           </div>
@@ -200,15 +255,15 @@ export default function BillsPage() {
 
                   <div className="grid grid-cols-2 gap-3">
                     <button 
-                      onClick={() => { setSelectedBill(bill); setIsModalOpen(true); }}
-                      className="py-4 bg-orange-50 text-orange-600 font-black rounded-2xl hover:bg-orange-100 transition-all flex items-center justify-center gap-2 active:scale-95"
+                      onClick={() => { setSelectedBill(bill); setIsPartialModalOpen(true); }}
+                      className="py-4 bg-orange-50 text-orange-600 font-black rounded-2xl hover:bg-orange-100 transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
                     >
                       <Wallet size={18} />
                       <span className="text-xs uppercase">PARCIAL</span>
                     </button>
                     <button 
                       onClick={() => handleMarkAsPaid(bill.id)}
-                      className="py-4 bg-gray-900 text-white font-black rounded-2xl hover:bg-green-600 transition-all flex items-center justify-center gap-2 active:scale-95 shadow-lg shadow-gray-100"
+                      className="py-4 bg-gray-900 text-white font-black rounded-2xl hover:bg-green-600 transition-all flex items-center justify-center gap-2 active:scale-95 shadow-lg shadow-gray-100 cursor-pointer"
                     >
                       <CheckCircle2 size={18} />
                       <span className="text-xs uppercase tracking-tight text-nowrap">QUITAR</span>
@@ -218,8 +273,51 @@ export default function BillsPage() {
               ))}
             </div>
 
+            {/* MODAL: NOVA CONTA A PAGAR */}
+            {isNewBillModalOpen && (
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                  <div className="p-8 border-b border-gray-100 flex justify-between items-center">
+                    <div>
+                      <h2 className="text-2xl font-black text-gray-900 tracking-tight">Nova Conta</h2>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Lançamento de Saída Futura</p>
+                    </div>
+                    <button onClick={() => setIsNewBillModalOpen(false)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-2xl cursor-pointer"><X size={28} /></button>
+                  </div>
+                  <form onSubmit={handleSubmitNewBill} className="p-8 space-y-6">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase ml-1 tracking-widest">Valor da Fatura</label>
+                      <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">R$</span>
+                        <input type="number" step="0.01" required className="w-full bg-gray-50 border-none rounded-2xl pl-10 pr-4 py-4 text-gray-900 font-black text-xl focus:ring-2 focus:ring-red-500 shadow-inner outline-none" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0,00" />
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase ml-1 tracking-widest">Data de Vencimento</label>
+                      <input type="date" required className="w-full bg-gray-50 border-none rounded-2xl px-5 py-4 text-gray-900 font-black focus:ring-2 focus:ring-red-500 shadow-inner outline-none animate-none" value={date} onChange={e => setDate(e.target.value)} />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase ml-1 tracking-widest">O que é isso?</label>
+                      <input type="text" required className="w-full bg-gray-50 border-none rounded-2xl px-5 py-4 text-gray-900 font-bold focus:ring-2 focus:ring-red-500 shadow-inner outline-none" value={description} onChange={e => setDescription(e.target.value)} placeholder="Ex: Aluguel, Internet..." />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase ml-1 tracking-widest">Conta de Origem</label>
+                      <select required className="w-full bg-gray-50 border-none rounded-2xl px-5 py-4 text-gray-900 font-bold focus:ring-2 focus:ring-red-500 shadow-inner outline-none appearance-none cursor-pointer" value={targetAccountId} onChange={e => setTargetAccountId(e.target.value)}>
+                        {accounts.map(acc => <option key={acc.id} value={acc.id} className="cursor-pointer">{acc.name}</option>)}
+                      </select>
+                    </div>
+
+                    <button type="submit" className="w-full bg-gray-900 text-white py-5 rounded-[1.5rem] font-black text-lg hover:bg-black transition-all shadow-xl shadow-gray-200 active:scale-95 mt-4 uppercase tracking-tight cursor-pointer">Confirmar Lançamento</button>
+                  </form>
+                </div>
+              </div>
+            )}
+
             {/* Modal de Pagamento Parcial */}
-            {isModalOpen && selectedBill && (
+            {isPartialModalOpen && selectedBill && (
               <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                 <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
                   <div className="p-8 border-b border-gray-100 flex justify-between items-center">
@@ -227,7 +325,7 @@ export default function BillsPage() {
                       <h2 className="text-xl font-black text-gray-900 tracking-tight">Pagar Parcial</h2>
                       <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">{selectedBill.description}</p>
                     </div>
-                    <button onClick={() => setIsModalOpen(false)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-2xl">
+                    <button onClick={() => setIsPartialModalOpen(false)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-2xl cursor-pointer">
                       <ArrowRight className="rotate-180" size={24} />
                     </button>
                   </div>
@@ -253,7 +351,7 @@ export default function BillsPage() {
 
                     <button 
                       onClick={handlePartialPayment}
-                      className="w-full bg-orange-600 text-white py-5 rounded-[1.5rem] font-black text-lg hover:bg-orange-700 transition-all shadow-xl shadow-orange-100 active:scale-95"
+                      className="w-full bg-orange-600 text-white py-5 rounded-[1.5rem] font-black text-lg hover:bg-orange-700 transition-all shadow-xl shadow-orange-100 active:scale-95 cursor-pointer"
                     >
                       CONFIRMAR PAGAMENTO
                     </button>
@@ -272,6 +370,14 @@ export default function BillsPage() {
           </div>
         )}
       </div>
+
+      {toast && (
+        <div className={`fixed bottom-8 right-8 z-[250] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl text-white font-black text-xs uppercase tracking-wider animate-in slide-in-from-bottom-5 duration-300 border ${toast.type === 'success' ? 'bg-emerald-600 border-emerald-500 shadow-emerald-100' : 'bg-red-600 border-red-500 shadow-red-100'}`}>
+          <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+          <span>{toast.text}</span>
+          <button onClick={() => setToast(null)} className="ml-4 p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"><X size={16} /></button>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

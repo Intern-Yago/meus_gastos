@@ -229,9 +229,9 @@ export default function MonthEndClosingPage() {
                   disabled={s.num >= currentStep}
                   className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs transition-all ${
                     currentStep === s.num 
-                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' 
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 cursor-pointer' 
                       : s.num < currentStep 
-                        ? 'bg-green-100 text-green-600 hover:bg-green-200' 
+                        ? 'bg-green-100 text-green-600 hover:bg-green-200 cursor-pointer' 
                         : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                   }`}
                 >

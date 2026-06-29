@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Home, List, MessageSquare, LogOut, X, TrendingUp, AlertCircle, CreditCard, Tag, Target, LayoutGrid, Settings, ArrowUpCircle, Download, ClipboardCheck } from 'lucide-react';
+import { Home, List, MessageSquare, LogOut, X, TrendingUp, AlertCircle, CreditCard, Tag, Target, LayoutGrid, Settings, ArrowUpCircle, Download, ClipboardCheck, Crown } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
@@ -14,20 +14,20 @@ interface SidebarProps {
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const [hasInvestments, setHasInvestments] = useState(false);
   const [hasPendingBills, setHasPendingBills] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const { isInstallable, isPWA, installPWA } = usePWAInstall();
 
   useEffect(() => {
     const checkModules = async () => {
       try {
-        // Verifica investimentos
-        const resInv = await api.get('/investments/check');
-        setHasInvestments(resInv.data.has_investments);
-        
         // Verifica contas pendentes
         const resBills = await api.get('/transactions/pending');
         setHasPendingBills(resBills.data.length > 0);
+
+        // Verifica se é administrador
+        const resMe = await api.get('/auth/me');
+        setIsAdmin(resMe.data.email === 'yago.commercial@gmail.com');
       } catch (err) {
         console.error('Erro ao verificar módulos:', err);
       }
@@ -45,7 +45,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       title: 'Visão Geral',
       items: [
         { href: '/dashboard', label: 'Dashboard', icon: Home },
-        { href: '/chat', label: 'Chat IA', icon: MessageSquare },
+        { href: '/chat', label: 'Consultar Oráculo', icon: MessageSquare },
       ]
     },
     {
@@ -63,18 +63,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         { href: '/business', label: 'Meus Negócios', icon: LayoutGrid },
         { href: '/projects', label: 'Projetos', icon: Target },
         { href: '/goals', label: 'Metas', icon: Target },
+        { href: '/investments', label: 'Investimentos', icon: TrendingUp },
         { href: '/fechamento', label: 'Fechamento de Mês', icon: ClipboardCheck },
       ]
     }
   ];
-
-  // Adiciona investimentos se existirem
-  if (hasInvestments) {
-    const gcSection = sections.find(s => s.title === 'Gestão & Crescimento');
-    if (gcSection) {
-      gcSection.items.splice(3, 0, { href: '/investments', label: 'Investimentos', icon: TrendingUp });
-    }
-  }
 
   const sidebarClasses = `
     fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0
@@ -85,7 +78,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     <>
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm transition-opacity"
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm transition-opacity cursor-pointer"
           onClick={onClose}
         />
       )}
@@ -93,7 +86,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       <aside className={sidebarClasses}>
         <div className="flex flex-col h-full">
           <div className="p-6 flex items-center justify-between">
-            <Link href="/dashboard" className="flex items-center space-x-3" onClick={onClose}>
+            <Link href="/dashboard" className="flex items-center space-x-3 cursor-pointer" onClick={onClose}>
               <div className="bg-blue-600 p-1.5 rounded-xl">
                 <Image 
                   src="/logo_fiora.png" 
@@ -106,17 +99,30 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <span className="text-2xl font-black text-gray-900 tracking-tight">Finora</span>
             </Link>
 
-            {isInstallable && !isPWA && (
-                <button 
-                  onClick={installPWA}
-                  title="Instalar Aplicativo"
-                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all active:scale-95 animate-pulse ml-2"
+            <div className="flex items-center gap-1">
+              {isAdmin && (
+                <Link 
+                  href="/admin"
+                  title="Painel Admin 👑"
+                  onClick={onClose}
+                  className="p-2 text-yellow-500 hover:bg-yellow-50 rounded-xl transition-all active:scale-95 cursor-pointer flex items-center justify-center"
                 >
-                    <Download size={20} />
-                </button>
-            )}
+                    <Crown size={18} />
+                </Link>
+              )}
 
-            <button onClick={onClose} className="lg:hidden p-2 text-gray-500 hover:bg-gray-100 rounded-lg">
+              {isInstallable && !isPWA && (
+                  <button 
+                    onClick={installPWA}
+                    title="Instalar Aplicativo"
+                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-all active:scale-95 animate-pulse cursor-pointer flex items-center justify-center"
+                  >
+                      <Download size={18} />
+                  </button>
+              )}
+            </div>
+
+            <button onClick={onClose} className="lg:hidden p-2 text-gray-500 hover:bg-gray-100 rounded-lg cursor-pointer">
               <X size={20} />
             </button>
           </div>
@@ -134,7 +140,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                         key={item.href}
                         href={item.href} 
                         onClick={onClose}
-                        className={`flex items-center space-x-3 p-2.5 rounded-xl text-sm font-semibold transition-all group ${
+                        className={`flex items-center space-x-3 p-2.5 rounded-xl text-sm font-semibold transition-all group cursor-pointer ${
                           isActive 
                             ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' 
                             : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'
@@ -158,7 +164,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             <Link
               href="/categories"
               onClick={onClose}
-              className={`p-3 rounded-xl transition-all group ${
+              className={`p-3 rounded-xl transition-all group cursor-pointer ${
                 pathname === '/categories' 
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' 
                   : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'
@@ -172,7 +178,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             <Link
               href="/settings"
               onClick={onClose}
-              className={`p-3 rounded-xl transition-all group ${
+              className={`p-3 rounded-xl transition-all group cursor-pointer ${
                 pathname === '/settings' 
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' 
                   : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'
@@ -185,7 +191,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             {/* SAIR */}
             <button 
               onClick={handleLogout}
-              className="flex-1 flex items-center justify-center space-x-1.5 p-3 rounded-xl font-black text-[10px] uppercase tracking-widest text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all group"
+              className="flex-1 flex items-center justify-center space-x-1.5 p-3 rounded-xl font-black text-[10px] uppercase tracking-widest text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all group cursor-pointer"
             >
               <LogOut size={16} className="group-hover:translate-x-0.5 transition-transform" />
               <span>Sair</span>

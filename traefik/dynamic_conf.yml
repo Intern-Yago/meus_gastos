@@ -1,0 +1,57 @@
+http:
+  routers:
+    frontend-prod:
+      entryPoints:
+        - web
+      rule: "Host(`app.gestaofinora.com.br`) || Host(`localhost`) || Host(`127.0.0.1`)"
+      service: frontend-prod-svc
+      priority: 10
+
+    backend-prod:
+      entryPoints:
+        - web
+      rule: "Host(`api.gestaofinora.com.br`)"
+      service: backend-prod-svc
+      priority: 20
+
+    backend-dev:
+      entryPoints:
+        - web
+      rule: "(Host(`localhost`) || Host(`127.0.0.1`) || Host(`finora-traefik`)) && (PathPrefix(`/auth`) || PathPrefix(`/dashboard`) || PathPrefix(`/transactions`) || PathPrefix(`/categories`) || PathPrefix(`/accounts`) || PathPrefix(`/ai`) || PathPrefix(`/projects`) || PathPrefix(`/reports`) || PathPrefix(`/files`) || PathPrefix(`/whatsapp`) || PathPrefix(`/investments`) || PathPrefix(`/goals`) || PathPrefix(`/budgets`) || PathPrefix(`/notifications`) || PathPrefix(`/admin`))"
+      service: backend-prod-svc
+      priority: 30
+
+    frontend-test:
+      entryPoints:
+        - web
+      rule: "Host(`test-app.gestaofinora.com.br`) || Host(`test.localhost`)"
+      service: frontend-test-svc
+      priority: 15
+
+    backend-test:
+      entryPoints:
+        - web
+      rule: "Host(`test-api.gestaofinora.com.br`)"
+      service: backend-test-svc
+      priority: 25
+
+  services:
+    frontend-prod-svc:
+      loadBalancer:
+        servers:
+          - url: "http://finora-frontend-blue:3000"
+
+    backend-prod-svc:
+      loadBalancer:
+        servers:
+          - url: "http://finora-backend-blue:8000"
+
+    frontend-test-svc:
+      loadBalancer:
+        servers:
+          - url: "http://finora-frontend-green:3000"
+
+    backend-test-svc:
+      loadBalancer:
+        servers:
+          - url: "http://finora-backend-green:8000"

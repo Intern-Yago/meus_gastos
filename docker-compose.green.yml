@@ -1,0 +1,34 @@
+services:
+  backend-green:
+    build: ./backend
+    container_name: finora-backend-green
+    restart: always
+    volumes:
+      - ./backend:/app
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql://finora:finora@db:5432/finora
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=finora_admin
+      - MINIO_SECRET_KEY=finora_storage_secret
+      - TZ=America/Sao_Paulo
+    ports:
+      - "8782:8787"
+    networks:
+      - finora-network
+
+  frontend-green:
+    build: ./frontend
+    container_name: finora-frontend-green
+    restart: always
+    environment:
+      - NEXT_PUBLIC_API_URL=https://api.gestaofinora.com.br
+      - TZ=America/Sao_Paulo
+    networks:
+      - finora-network
+
+networks:
+  finora-network:
+    external: true

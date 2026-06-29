@@ -75,25 +75,42 @@ def read_transactions(
     
     print(f"DEBUG: Found {len(items)} items, total: {total}")
     
-    summary = {}
-    try:
-        from .dashboard import get_dashboard_summary
-        summary = get_dashboard_summary(None, None, None, db, current_user)
-    except Exception as e:
-        print(f"ERROR: Failed to get dashboard summary for transactions view: {e}")
-
     return {
         "items": items,
         "total": total,
         "page": page,
         "size": size,
-        "pages": (total + size - 1) // size,
-        **summary
+        "pages": (total + size - 1) // size
     }
 
 @router.post("/", response_model=schemas.Transaction)
 def create_transaction(transaction: schemas.TransactionCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
-    return crud.create_transaction(db=db, transaction=transaction, user_id=current_user.id)
+    # Geração de descrição automática para investimentos caso esteja em branco
+    if (not transaction.description or transaction.description.strip() == ""):
+        if transaction.ticker and transaction.shares and transaction.shares > 0:
+            action_word = "Aporte" if transaction.type == "expense" else "Rendimento"
+            shares_str = f"{transaction.shares:g}"
+            transaction.description = f"{action_word} {shares_str} cotas de {transaction.ticker.upper()}"
+        else:
+            transaction.description = "Lançamento Sem Descrição"
+
+    # Cálculo de valor automático com base no Ticker (Mercado Financeiro) se o valor não for informado (0.0)
+    if (not transaction.amount or transaction.amount == 0.0) and transaction.ticker and transaction.shares and transaction.shares > 0:
+        from ..utils.market_data import get_current_prices
+        prices = get_current_prices([transaction.ticker])
+        curr_price = prices.get(transaction.ticker.upper(), 0.0)
+        if curr_price > 0:
+            transaction.amount = curr_price * transaction.shares
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Não conseguimos buscar o preço atual de mercado deste ativo automaticamente. Por favor, preencha o valor manualmente para prosseguir."
+            )
+    db_tx = crud.create_transaction(db=db, transaction=transaction, user_id=current_user.id)
+    if db_tx and db_tx.ticker:
+        from ..utils.market_data import invalidate_investments_cache
+        invalidate_investments_cache(current_user.id)
+    return db_tx
 
 @router.get("/pending")
 def get_pending_transactions(db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
@@ -174,6 +191,23 @@ def update_transaction(transaction_id: int, transaction_data: dict, db: Session 
     if not db_tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
     
+    # Cálculo de valor automático com base no Ticker se o valor for informado como 0.0 ou vazio
+    amount_val = transaction_data.get('amount')
+    ticker_val = transaction_data.get('ticker') or db_tx.ticker
+    shares_val = transaction_data.get('shares') if 'shares' in transaction_data else db_tx.shares
+
+    if (amount_val is not None and amount_val == 0.0) and ticker_val and shares_val and shares_val > 0:
+        from ..utils.market_data import get_current_prices
+        prices = get_current_prices([ticker_val])
+        curr_price = prices.get(ticker_val.upper(), 0.0)
+        if curr_price > 0:
+            transaction_data['amount'] = curr_price * shares_val
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Não conseguimos buscar o preço atual de mercado deste ativo automaticamente. Por favor, preencha o valor manualmente para prosseguir."
+            )
+    
     # List of fields allowed to be updated by the user
     allowed_fields = {
         'amount', 'description', 'category_id', 'account_id', 'date', 'type', 
@@ -201,11 +235,23 @@ def update_transaction(transaction_id: int, transaction_data: dict, db: Session 
     
     db.commit()
     db.refresh(db_tx)
+    if db_tx.ticker:
+        from ..utils.market_data import invalidate_investments_cache
+        invalidate_investments_cache(current_user.id)
     return db_tx
 
 @router.delete("/{transaction_id}")
 def delete_transaction(transaction_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
+    # Fetch ticker before deleting to know if cache clear is needed
+    tx_to_del = db.query(models.Transaction).filter(models.Transaction.id == transaction_id, models.Transaction.user_id == current_user.id).first()
+    has_ticker = tx_to_del and tx_to_del.ticker
+    
     success = crud.delete_transaction(db=db, transaction_id=transaction_id, user_id=current_user.id)
     if not success:
         raise HTTPException(status_code=404, detail="Transaction not found")
+        
+    if has_ticker:
+        from ..utils.market_data import invalidate_investments_cache
+        invalidate_investments_cache(current_user.id)
+        
     return {"message": "Transaction deleted"}

@@ -15,7 +15,7 @@ Normalizador de Merchant (Limpa para "iFood")
   ↓
 Classificador Local do Usuário (Consulta regras específicas do usuário)
   ↓
-Classificador Global Anonimizado (Consulta a "Mente Coletiva" via pgvector)
+Classificador Global Anonimizado (Consulta a "Inteligência Coletiva Financeira" via pgvector)
   ↓
 Score de Confiança (Cálculo estatístico ponderado)
   ↓
@@ -31,10 +31,10 @@ Cada usuário possui sua própria base de inteligência privada. As regras ensin
 
 ### 2. Aprendizado Global Anonimizado
 O sistema aprende os padrões gerais de mercado a partir das interações anonimizadas de todos os usuários.
-*   "Netflix" costuma ser Assinatura.
-*   "Uber" costuma ser Transporte.
-*   "Google Ads" costuma ser Marketing.
-*O global recebe apenas sinais limpos: `merchant_normalizado`, `categoria_final`, `tipo_transacao`, `faixa_de_valor`, e `nível_de_confiança`.*
+*   "Netflix" no domingo à noite costuma ser Assinatura de Lazer.
+*   "Uber" na sexta-feira às 2h costuma ser Lazer/Transporte de final de semana.
+*   "Posto de Gasolina" na segunda-feira às 8h costuma ser Transporte de Rotina.
+*O global recebe apenas sinais limpos: `merchant_normalizado`, `contexto_temporal_dia_hora`, `categoria_final`, `tipo_transacao`, `faixa_de_valor`, e `nível_de_confiança`.*
 
 ### 3. Confiança por Score (Auto-categorização vs. Revisão)
 O motor não aplica as descobertas cegamente. Ele opera baseado em níveis de confiança (Confidence Score):

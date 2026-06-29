@@ -13,12 +13,21 @@ class UserBase(BaseModel):
     push_notifications_enabled: Optional[bool] = True
     spending_alerts_enabled: Optional[bool] = True
     market_insights_enabled: Optional[bool] = True
+    proactive_insights_enabled: Optional[bool] = True
+    proactive_insights_days: Optional[str] = "fri"
+    proactive_insights_hour: Optional[int] = 10
+    proactive_insights_minute: Optional[int] = 0
     email_verified: bool = False
     phone_verified: bool = False
     investor_profile: Optional[str] = "Não Definido"
+    whatsapp_lid: Optional[str] = None
+    timezone: Optional[str] = "America/Sao_Paulo"
+    proactive_insights_email: Optional[bool] = None
+    proactive_insights_whatsapp: Optional[bool] = None
 
 class UserCreate(UserBase):
     password: str
+    invite_code: Optional[str] = None
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
@@ -29,9 +38,17 @@ class UserUpdate(BaseModel):
     push_notifications_enabled: Optional[bool] = None
     spending_alerts_enabled: Optional[bool] = None
     market_insights_enabled: Optional[bool] = None
+    proactive_insights_enabled: Optional[bool] = None
+    proactive_insights_days: Optional[str] = None
+    proactive_insights_hour: Optional[int] = None
+    proactive_insights_minute: Optional[int] = None
     email_verified: Optional[bool] = None
     phone_verified: Optional[bool] = None
     investor_profile: Optional[str] = None
+    whatsapp_lid: Optional[str] = None
+    timezone: Optional[str] = None
+    proactive_insights_email: Optional[bool] = None
+    proactive_insights_whatsapp: Optional[bool] = None
 
 class User(UserBase):
     id: UUID
@@ -112,7 +129,7 @@ class ProjectBase(BaseModel):
     target_date: Optional[datetime] = None
     color: Optional[str] = "#3b82f6"
     icon: Optional[str] = "Target"
-    status: Optional[str] = "planning"
+    status: Optional[str] = "PLANEJAMENTO"
     type: Optional[str] = "event"
     is_business: Optional[bool] = False
     cnpj: Optional[str] = None
@@ -305,6 +322,7 @@ class DashboardSummary(BaseModel):
     accounts_payable: dict
     accounts_receivable: dict
     budgets: List[dict]
+    credit_cards: List[dict] = []
     
     # Novas métricas de Inteligência MEI / Autônomo
     dinheiro_livre_real: float
@@ -316,9 +334,11 @@ class DashboardSummary(BaseModel):
     sobra_provavel: float
     risco_caixa: str
     texto_analise_caixa: str
+    entradas_pendentes_mes: float
+    contas_pendentes_mes: float
 
 # Pagination schemas
-class PaginatedTransactions(DashboardSummary):
+class PaginatedTransactions(BaseModel):
     items: List[Transaction]
     total: int
     page: int

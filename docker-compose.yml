@@ -9,10 +9,13 @@ services:
       - POSTGRES_DB=finora
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     networks:
       - finora-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finora -d finora"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -20,14 +23,16 @@ services:
     restart: always
     networks:
       - finora-network
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   minio:
     image: minio/minio
     container_name: finora-minio
     restart: always
-    ports:
-      - "9000:9000"
-      - "9001:9001"
     environment:
       - MINIO_ROOT_USER=finora_admin
       - MINIO_ROOT_PASSWORD=finora_storage_secret
@@ -36,43 +41,47 @@ services:
     command: server /data --console-address ":9001"
     networks:
       - finora-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  backend:
-    build: ./backend
-    container_name: finora-backend
+  evolution:
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: finora-whatsapp
+    restart: always
+    environment:
+      - SERVER_TYPE=http
+      - SERVER_PORT=8080
+      - SERVER_URL=https://evo.gestaofinora.com.br
+      - AUTHENTICATION_TYPE=apikey
+      - AUTHENTICATION_API_KEY=finora_secret_key_whatsapp
+      - CORS_ORIGIN=*
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://finora:finora@db:5432/finora?schema=evolution
+      - DATABASE_CONNECTION_CLIENT_NAME=finora-evo
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://redis:6379/1
+      - CACHE_REDIS_PREFIX_KEY=evolution
+    networks:
+      - finora-network
+
+  traefik:
+    image: traefik:v3.0
+    container_name: finora-traefik
     restart: always
     volumes:
-      - ./backend:/app
-    ports:
-      - "8000:8000"
-    env_file:
-      - ./backend/.env
-    depends_on:
-      - db
-      - redis
-      - minio
-    environment:
-      - DATABASE_URL=postgresql://finora:finora@db:5432/finora
-      - REDIS_URL=redis://redis:6379/0
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=finora_admin
-      - MINIO_SECRET_KEY=finora_storage_secret
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic_conf.yml:/etc/traefik/dynamic_conf.yml:ro
     networks:
       - finora-network
-
-  frontend:
-    build: ./frontend
-    container_name: finora-frontend
-    restart: always
-    command: sh -c "npm run build && npm run start"
-    ports:
-      - "3000:3000"
     depends_on:
-      - backend
-    environment:
-      - NEXT_PUBLIC_API_URL=https://api.gestaofinora.com.br
-    networks:
-      - finora-network
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   tunnel:
     image: cloudflare/cloudflared:latest
@@ -82,15 +91,25 @@ services:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
     command: tunnel --no-autoupdate run
     depends_on:
-      - frontend
-      - backend
+      - traefik
+    networks:
+      - finora-network
+
+  headroom:
+    image: ghcr.io/chopratejas/headroom:latest
+    container_name: finora-headroom
+    restart: always
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     networks:
       - finora-network
 
 networks:
   finora-network:
+    name: finora-network
     driver: bridge
 
 volumes:
   postgres_data:
   minio_data:
+  evolution_data:

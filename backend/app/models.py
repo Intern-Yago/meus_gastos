@@ -33,11 +33,20 @@ class User(Base):
     push_notifications_enabled = Column(Boolean, default=True)
     spending_alerts_enabled = Column(Boolean, default=True)
     market_insights_enabled = Column(Boolean, default=True)
+    proactive_insights_enabled = Column(Boolean, default=True)
+    proactive_insights_days = Column(String, default="fri")
+    proactive_insights_hour = Column(Integer, default=10)
+    proactive_insights_minute = Column(Integer, default=0)
+    proactive_insights_email = Column(Boolean, nullable=True, default=None)
+    proactive_insights_whatsapp = Column(Boolean, nullable=True, default=None)
     known_ips = Column(String, default="") # Lista separada por vírgula de IPs conhecidos
     last_location = Column(String, nullable=True) # Última cidade/país detectado
     email_verified = Column(Boolean, default=False)
     phone_verified = Column(Boolean, default=False)
     investor_profile = Column(String, default="Não Definido", nullable=True)
+    timezone = Column(String, default="America/Sao_Paulo")
+    is_active = Column(Boolean, default=True)
+    ai_tokens_used = Column(Integer, default=0)
     
     categories = relationship("Category", back_populates="owner")
     transactions = relationship("Transaction", back_populates="owner")
@@ -59,7 +68,7 @@ class Project(Base):
     target_date = Column(DateTime, nullable=True)
     color = Column(String, default="#3b82f6")
     icon = Column(String, default="Target")
-    status = Column(String, default="planning") # planning, active, completed
+    status = Column(String, default="PLANEJAMENTO") # PLANEJAMENTO, CAPTAÇÃO, CONSTRUÇÃO, FINALIZADO / IDEIA, VALIDAÇÃO, OPERAÇÃO, ESCALA
     type = Column(String, default="event") # event, business
     is_business = Column(Boolean, default=False)
     cnpj = Column(String, nullable=True)

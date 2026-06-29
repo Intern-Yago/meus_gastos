@@ -1,0 +1,18 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://localhost:3001",
+      "localStorage": [
+        {
+          "name": "token",
+          "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwbGF5d3JpZ2h0QGdlc3Rhb2Zpbm9yYS5jb20uYnIiLCJleHAiOjE3ODA5NDgwODIsInR5cGUiOiJhY2Nlc3MifQ.NDDGpF-QtYrspaRippHEL2rD1oQXLvzGu_AAemH9vQg"
+        },
+        {
+          "name": "user",
+          "value": "{\"email\":\"playwright@gestaofinora.com.br\",\"name\":\"Playwright Test User\",\"phone\":null,\"currency\":\"BRL\",\"monthly_income_goal\":null,\"push_notifications_enabled\":true,\"spending_alerts_enabled\":true,\"market_insights_enabled\":true,\"email_verified\":false,\"phone_verified\":false,\"investor_profile\":\"Não Definido\",\"id\":\"9d913937-380b-4950-89cd-b445ffd81916\"}"
+        }
+      ]
+    }
+  ]
+}

@@ -13,8 +13,11 @@ RUN npm install
 # Copia o restante do código
 COPY . .
 
+# Compila a aplicação para produção
+RUN npm run build
+
 # Expõe a porta do Next.js
 EXPOSE 3000
 
-# Comando para rodar em modo desenvolvimento
-CMD ["npm", "run", "dev"]
+# Comando para rodar em produção
+CMD ["npm", "run", "start"]

@@ -32,6 +32,14 @@ export default function GoalsPage() {
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
 
+  // Toast state
+  const [toast, setToast] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  const showToast = (type: 'success' | 'error', text: string) => {
+    setToast({ type, text });
+    setTimeout(() => setToast(null), 4000);
+  };
+
   // Form states
   const [name, setName] = useState('');
   const [targetAmount, setTargetAmount] = useState('');
@@ -108,8 +116,9 @@ export default function GoalsPage() {
       setIsModalOpen(false);
       resetForm();
       fetchGoals();
+      showToast('success', editingId ? 'Meta atualizada!' : 'Meta criada com sucesso!');
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Erro ao salvar meta');
+      showToast('error', err.response?.data?.detail || 'Erro ao salvar meta');
     }
   };
 
@@ -118,8 +127,9 @@ export default function GoalsPage() {
     try {
       await api.delete(`/goals/${id}`);
       fetchGoals();
+      showToast('success', 'Meta excluída com sucesso!');
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Erro ao excluir meta');
+      showToast('error', err.response?.data?.detail || 'Erro ao excluir meta');
     }
   };
 
@@ -131,7 +141,10 @@ export default function GoalsPage() {
       setAddAmount('');
       setSelectedGoal(null);
       fetchGoals();
-    } catch (err) {}
+      showToast('success', 'Valor poupado com sucesso!');
+    } catch (err) {
+      showToast('error', 'Erro ao adicionar progresso');
+    }
   };
 
   const formatCurrency = (val: number) => {
@@ -148,7 +161,7 @@ export default function GoalsPage() {
           </div>
           <button 
             onClick={() => { resetForm(); setIsModalOpen(true); }}
-            className="flex items-center justify-center space-x-2 bg-gray-900 text-white px-6 py-3 rounded-2xl font-black shadow-xl shadow-gray-200 active:scale-95 transition-all"
+            className="flex items-center justify-center space-x-2 bg-gray-900 text-white px-6 py-3 rounded-2xl font-black shadow-xl shadow-gray-200 active:scale-95 transition-all cursor-pointer"
           >
             <Plus size={20} />
             <span>CRIAR NOVA META</span>
@@ -164,8 +177,8 @@ export default function GoalsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {goals.map((goal) => {
-              const progress = Math.min((goal.current_amount / goal.target_amount) * 100, 100);
-              const remaining = goal.target_amount - goal.current_amount;
+              const progress = goal.target_amount > 0 ? Math.min((goal.current_amount / goal.target_amount) * 100, 100) : 0;
+              const remaining = Math.max(0, goal.target_amount - goal.current_amount);
 
               return (
                 <div 
@@ -179,9 +192,9 @@ export default function GoalsPage() {
                     >
                       <GoalIcon name={goal.icon} size={32} />
                     </div>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => handleOpenEdit(goal)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"><Pencil size={18} /></button>
-                      <button onClick={() => handleDelete(goal.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18} /></button>
+                    <div className="flex gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => handleOpenEdit(goal)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all cursor-pointer"><Pencil size={18} /></button>
+                      <button onClick={() => handleDelete(goal.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all cursor-pointer"><Trash2 size={18} /></button>
                     </div>
                   </div>
 
@@ -208,7 +221,7 @@ export default function GoalsPage() {
 
                   <button 
                     onClick={() => { setSelectedGoal(goal); setIsAddProgressOpen(true); }}
-                    className="w-full py-4 bg-gray-50 text-gray-900 font-black rounded-[1.5rem] hover:bg-black hover:text-white transition-all flex items-center justify-center gap-2 active:scale-95"
+                    className="w-full py-4 bg-gray-50 text-gray-900 font-black rounded-[1.5rem] hover:bg-black hover:text-white transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
                   >
                     <Plus size={20} /> ADICIONAR VALOR
                   </button>
@@ -233,7 +246,7 @@ export default function GoalsPage() {
                   <h2 className="text-2xl font-black text-gray-900 tracking-tight">{editingId ? 'Editar Meta' : 'Nova Meta'}</h2>
                   <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Defina seu objetivo</p>
                 </div>
-                <button onClick={() => setIsModalOpen(false)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-2xl"><X size={28} /></button>
+                <button onClick={() => setIsModalOpen(false)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-2xl cursor-pointer"><X size={28} /></button>
               </div>
 
               <form onSubmit={handleSubmit} className="p-8 space-y-6 max-h-[70vh] overflow-y-auto">
@@ -278,12 +291,12 @@ export default function GoalsPage() {
                   <label className="text-[10px] font-black text-gray-400 uppercase ml-1 tracking-widest">Cor e Ícone</label>
                   <div className="flex flex-wrap gap-2 mb-4">
                     {colors.map(c => (
-                      <button key={c.value} type="button" onClick={() => setColor(c.value)} className={`w-8 h-8 rounded-full border-4 ${color === c.value ? 'border-gray-200 scale-110 shadow-md' : 'border-transparent'}`} style={{ backgroundColor: c.value }} />
+                      <button key={c.value} type="button" onClick={() => setColor(c.value)} className={`w-8 h-8 rounded-full border-4 cursor-pointer ${color === c.value ? 'border-gray-200 scale-110 shadow-md' : 'border-transparent'}`} style={{ backgroundColor: c.value }} />
                     ))}
                   </div>
                   <div className="grid grid-cols-6 gap-2 p-3 bg-gray-50 rounded-2xl shadow-inner">
                     {Object.keys(GOAL_ICONS).map(iconName => (
-                      <button key={iconName} type="button" onClick={() => setIcon(iconName)} className={`flex items-center justify-center p-3 rounded-xl transition-all ${icon === iconName ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+                      <button key={iconName} type="button" onClick={() => setIcon(iconName)} className={`flex items-center justify-center p-3 rounded-xl transition-all cursor-pointer ${icon === iconName ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
                         <GoalIcon name={iconName} size={20} />
                       </button>
                     ))}
@@ -292,7 +305,7 @@ export default function GoalsPage() {
 
                 <button 
                   type="submit" 
-                  className="w-full bg-gray-900 text-white py-5 rounded-[1.5rem] font-black text-lg hover:bg-black transition-all shadow-xl shadow-gray-200 active:scale-95 mt-4"
+                  className="w-full bg-gray-900 text-white py-5 rounded-[1.5rem] font-black text-lg hover:bg-black transition-all shadow-xl shadow-gray-200 active:scale-95 mt-4 cursor-pointer"
                 >
                   {editingId ? 'SALVAR ALTERAÇÕES' : 'CRIAR META'}
                 </button>
@@ -310,7 +323,7 @@ export default function GoalsPage() {
                   <h2 className="text-xl font-black text-gray-900 tracking-tight">Poupar para Meta</h2>
                   <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">{selectedGoal.name}</p>
                 </div>
-                <button onClick={() => setIsAddProgressOpen(false)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-2xl"><X size={24} /></button>
+                <button onClick={() => setIsAddProgressOpen(false)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-2xl cursor-pointer"><X size={24} /></button>
               </div>
               <div className="p-8 space-y-6">
                 <div className="space-y-2">
@@ -319,7 +332,7 @@ export default function GoalsPage() {
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-black text-sm">R$</span>
                     <input 
                       type="number" step="0.01" autoFocus
-                      className="w-full bg-gray-50 border-none rounded-[1.2rem] pl-10 pr-4 py-4 text-gray-900 font-black text-lg focus:ring-2 focus:ring-blue-500 outline-none shadow-inner" 
+                      className="w-full bg-gray-50 border-none rounded-[1.2rem] pl-10 pr-4 py-4 text-gray-900 font-black text-lg focus:ring-2 focus:ring-blue-500 outline-none shadow-inner animate-none" 
                       value={addAmount} onChange={e => setAddAmount(e.target.value)} placeholder="0.00"
                     />
                   </div>
@@ -327,7 +340,7 @@ export default function GoalsPage() {
 
                 <button 
                   onClick={handleAddProgress}
-                  className="w-full bg-blue-600 text-white py-5 rounded-[1.5rem] font-black text-lg hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 active:scale-95"
+                  className="w-full bg-blue-600 text-white py-5 rounded-[1.5rem] font-black text-lg hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 active:scale-95 cursor-pointer"
                 >
                   CONFIRMAR DEPÓSITO
                 </button>
@@ -336,6 +349,14 @@ export default function GoalsPage() {
           </div>
         )}
       </div>
+
+      {toast && (
+        <div className={`fixed bottom-8 right-8 z-[250] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl text-white font-black text-xs uppercase tracking-wider animate-in slide-in-from-bottom-5 duration-300 border ${toast.type === 'success' ? 'bg-emerald-600 border-emerald-500 shadow-emerald-100' : 'bg-red-600 border-red-500 shadow-red-100'}`}>
+          <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+          <span>{toast.text}</span>
+          <button onClick={() => setToast(null)} className="ml-4 p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"><X size={16} /></button>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

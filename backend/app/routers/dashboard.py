@@ -51,12 +51,31 @@ def get_dashboard_summary(
     current_liquid_cash = initial_balances + total_income_paid_all_time - total_expense_paid_all_time
     assets_total = current_liquid_cash
 
-    # Passivos = Contas a Pagar Pendentes (Dívida total não paga)
-    liabilities_total = db.query(func.sum(models.Transaction.amount - models.Transaction.amount_paid)).filter(
+    # Passivos = Contas a Pagar Pendentes (Dívida total não paga até o mês selecionado) + Fatura de Cartão do Mês Anterior (que vence no mês atual)
+    # Pegar o último dia do mês selecionado para evitar somar parcelas futuras como dívidas ativas do mês corrente
+    _, last_day = calendar.monthrange(year, month)
+    end_of_selected_month = datetime(year, month, last_day, 23, 59, 59)
+    
+    liabilities_pending = db.query(func.sum(models.Transaction.amount - models.Transaction.amount_paid)).filter(
         models.Transaction.user_id == current_user.id,
         models.Transaction.type == 'expense',
-        models.Transaction.is_paid == False
+        models.Transaction.is_paid == False,
+        models.Transaction.date <= end_of_selected_month
     ).scalar() or 0.0
+    
+    prev_month_temp = month - 1 if month > 1 else 12
+    prev_year_temp = year if month > 1 else year - 1
+    
+    prev_month_credit_spent = db.query(func.sum(models.Transaction.amount)).filter(
+        models.Transaction.user_id == current_user.id,
+        models.Transaction.type == 'expense',
+        models.Transaction.payment_method == 'CREDIT_CARD',
+        models.Transaction.is_paid == True,
+        extract('month', models.Transaction.date) == prev_month_temp,
+        extract('year', models.Transaction.date) == prev_year_temp
+    ).scalar() or 0.0
+    
+    liabilities_total = liabilities_pending + prev_month_credit_spent
     
     net_worth = assets_total - liabilities_total
 
@@ -96,6 +115,7 @@ def get_dashboard_summary(
     for b in db_budgets:
         spent = sum(t.amount for t in transactions if t.category_id == b.category_id)
         budget_progress.append({
+            "category_id": b.category_id,
             "category": b.category.name,
             "limit": b.amount,
             "spent": spent,
@@ -103,8 +123,8 @@ def get_dashboard_summary(
         })
 
     def calculate_totals(txs):
-        income = sum(t.amount for t in txs if t.category and t.category.type == 'income')
-        expense = sum(t.amount for t in txs if t.category and t.category.type == 'expense')
+        income = sum(t.amount for t in txs if t.category and t.category.type == 'income' and t.is_paid == True)
+        expense = sum(t.amount for t in txs if t.category and t.category.type == 'expense' and t.is_paid == True)
         return income, expense
 
     current_income, current_expense = calculate_totals(transactions)
@@ -168,8 +188,8 @@ def get_dashboard_summary(
         models.Transaction.is_paid == False
     ).all()
 
-    # Contas a Pagar (Expense + Unpaid)
-    to_pay = [t for t in pending_bills_all if t.type == 'expense']
+    # Contas a Pagar (Expense + Unpaid, exceto cartão de crédito para evitar confundir com boletos manuais)
+    to_pay = [t for t in pending_bills_all if t.type == 'expense' and t.payment_method != "CREDIT_CARD" and t.payment_method != models.PaymentMethod.CREDIT_CARD]
     to_pay_late = [t for t in to_pay if t.date < datetime.now()]
     to_pay_on_time = [t for t in to_pay if t.date >= datetime.now()]
 
@@ -211,46 +231,83 @@ def get_dashboard_summary(
     # Livre = Saldo em Conta - Contas a Pagar Totais - Provisão DAS - Reserva de Metas
     dinheiro_livre_real = assets_total - liabilities_total - das_provisao - goals_reserva
     
-    # 4. Widget "Meu Mês Fecha?" (Oráculo de Caixa)
-    # Entradas Previstas do Mês (Pagas + Pendentes)
-    entradas_previstas_mes = db.query(func.sum(models.Transaction.amount)).filter(
-        models.Transaction.user_id == current_user.id,
-        models.Transaction.type == 'income',
-        extract('month', models.Transaction.date) == month,
-        extract('year', models.Transaction.date) == year
-    ).scalar() or 0.0
+    # 4. Widget "Meu Mês Fecha?" (Oráculo de Caixa) - Regime de Caixa Puro para total consistência
+    # Entradas do Mês (Somente as Realizadas/Pagas, evitando discrepâncias visuais)
+    entradas_previstas_mes = current_income
     
-    # Contas Previstas do Mês (Saídas Pendentes/A Pagar)
-    contas_previstas_mes = db.query(func.sum(models.Transaction.amount)).filter(
-        models.Transaction.user_id == current_user.id,
-        models.Transaction.type == 'expense',
-        models.Transaction.is_paid == False,
-        extract('month', models.Transaction.date) == month,
-        extract('year', models.Transaction.date) == year
-    ).scalar() or 0.0
+    # Contas do Mês Pendentes (A Pagar)
+    contas_previstas_mes = pending_expense_month
     
-    # Despesas Pagas no Mês
-    despesas_pagas_mes = db.query(func.sum(models.Transaction.amount)).filter(
-        models.Transaction.user_id == current_user.id,
-        models.Transaction.type == 'expense',
-        models.Transaction.is_paid == True,
-        extract('month', models.Transaction.date) == month,
-        extract('year', models.Transaction.date) == year
-    ).scalar() or 0.0
+    # Despesas Já Pagas do Mês
+    despesas_pagas_mes = current_expense
     
-    # Sobra Provável
-    sobra_provavel = entradas_previstas_mes - despesas_pagas_mes - contas_previstas_mes - das_provisao
+    # === REFINAMENTO DE RISCO BASEADO NO SALDO FINAL PROJETADO ===
+    # Saldo Projetado ajustado pelos impostos do mês
+    saldo_final_projetado = projected_balance - das_provisao
     
-    # Risco de Caixa & Texto de Análise de Caixa
+    # Sobra/Resultado de fluxo mensal (Fluxo de caixa líquido do mês - Puro Caixa)
+    fluxo_mensal_resultado = current_income - current_expense - das_provisao
+    
     risco_caixa = "baixo"
-    texto_analise_caixa = "Seu caixa está saudável e equilibrado. Continue mantendo o controle de gastos e orçamentos para atingir suas metas de faturamento."
+    texto_analise_caixa = "Seu caixa está saudável e equilibrado. Continue mantendo o controle de gastos para acumular patrimônio."
     
-    if sobra_provavel < 0.0:
+    if saldo_final_projetado < 0.0:
         risco_caixa = "alto"
-        texto_analise_caixa = f"Seu caixa está em alto risco (déficit provável de R$ {abs(sobra_provavel):.2f}). Suas contas previstas superam suas entradas. Considere criar metas de corte ou reavaliar o cartão."
-    elif sobra_provavel < 500.0:
+        texto_analise_caixa = f"ALTO RISCO: Sua conta fechará no vermelho com saldo negativo de R$ {abs(saldo_final_projetado):.2f}. Suas despesas superam seu dinheiro disponível. Crie metas de corte urgente!"
+    elif fluxo_mensal_resultado < 0.0:
         risco_caixa = "medio"
-        texto_analise_caixa = f"Seu mês fecha positivo (sobra de R$ {sobra_provavel:.2f}), mas sua margem está apertada. Se os gastos extras do cartão passarem de R$ 500, você entrará no vermelho."
+        texto_analise_caixa = f"QUEIMA DE CAIXA: Sua conta fechará no azul com R$ {saldo_final_projetado:.2f}, mas você está consumindo R$ {abs(fluxo_mensal_resultado):.2f} das suas reservas este mês. Reduza despesas e controle o cartão para proteger seu patrimônio."
+    elif fluxo_mensal_resultado < 500.0:
+        risco_caixa = "medio"
+        texto_analise_caixa = f"Sua conta fechará no azul com R$ {saldo_final_projetado:.2f}, mas sua sobra de fluxo mensal é pequena (R$ {fluxo_mensal_resultado:.2f}). Evite novos gastos extras."
+
+    # === CÁLCULO DE DETALHAMENTO DE CARTÕES DE CRÉDITO (OPÇÃO B) ===
+    credit_cards_list = []
+    cc_accounts = db.query(models.Account).filter(
+        models.Account.user_id == current_user.id,
+        models.Account.has_credit_card == True
+    ).all()
+    
+    for acc in cc_accounts:
+        # Calcular gastos de crédito do mês atual
+        current_bill = db.query(func.sum(models.Transaction.amount)).filter(
+            models.Transaction.user_id == current_user.id,
+            models.Transaction.account_id == acc.id,
+            models.Transaction.type == 'expense',
+            models.Transaction.payment_method == 'CREDIT_CARD',
+            models.Transaction.is_paid == True,
+            extract('month', models.Transaction.date) == month,
+            extract('year', models.Transaction.date) == year
+        ).scalar() or 0.0
+        
+        # Calcular faturada do mês anterior (que vence no mês atual)
+        prev_month_temp = month - 1 if month > 1 else 12
+        prev_year_temp = year if month > 1 else year - 1
+        
+        past_bill = db.query(func.sum(models.Transaction.amount)).filter(
+            models.Transaction.user_id == current_user.id,
+            models.Transaction.account_id == acc.id,
+            models.Transaction.type == 'expense',
+            models.Transaction.payment_method == 'CREDIT_CARD',
+            models.Transaction.is_paid == True,
+            extract('month', models.Transaction.date) == prev_month_temp,
+            extract('year', models.Transaction.date) == prev_year_temp
+        ).scalar() or 0.0
+        
+        limit = acc.credit_limit or 0.0
+        utilization_pct = (current_bill / limit * 100) if limit > 0 else 0
+        
+        credit_cards_list.append({
+            "id": acc.id,
+            "name": acc.name,
+            "limit": limit,
+            "due_day": acc.due_day or 10,
+            "closing_day": acc.closing_day or 5,
+            "current_bill": current_bill,
+            "past_bill": past_bill,
+            "utilization_pct": utilization_pct,
+            "color": acc.color or "#3b82f6"
+        })
 
     # Simplificando para o frontend: No Dashboard enviamos os totais e as listas
     return {
@@ -289,15 +346,18 @@ def get_dashboard_summary(
             "total_on_time": sum(t.amount for t in to_receive_on_time)
         },
         "budgets": budget_progress,
+        "credit_cards": credit_cards_list,
         "dinheiro_livre_real": dinheiro_livre_real,
         "das_provisao": das_provisao,
         "goals_reserva": goals_reserva,
         "entradas_previstas_mes": entradas_previstas_mes,
         "contas_previstas_mes": contas_previstas_mes,
         "despesas_pagas_mes": despesas_pagas_mes,
-        "sobra_provavel": sobra_provavel,
+        "sobra_provavel": saldo_final_projetado,
         "risco_caixa": risco_caixa,
-        "texto_analise_caixa": texto_analise_caixa
+        "texto_analise_caixa": texto_analise_caixa,
+        "entradas_pendentes_mes": pending_income_month,
+        "contas_pendentes_mes": pending_expense_month
     }
 
 @router.get("/report")
